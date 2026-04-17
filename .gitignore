@@ -1,0 +1,31 @@
+### --- 后端 Python 部分 --- ###
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
+# 忽略大模型和日志
+model/
+logs/
+output/
+data/
+# 忽略 PyCharm 配置
+.idea/
+
+### --- 前端 Vue 部分 --- ###
+# 重点：忽略前端的依赖包，这个绝对不能传
+frontend/node_modules/
+# 忽略前端打包产物
+frontend/dist/
+# 忽略前端本地环境配置
+frontend/.env.local
+frontend/.env.*.local
+# 忽略前端日志和缓存
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.vscode/
+
+### --- 系统/通用 --- ###
+.DS_Store
+Thumbs.db
