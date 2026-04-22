@@ -1,33 +1,51 @@
-import os
-from PIL import Image
-from fastapi import UploadFile
+from io import BytesIO
+from pathlib import Path
 import uuid
 
-UPLOAD_DIR = "static/uploads/avatars"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+from fastapi import UploadFile
+from PIL import Image, ImageOps
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+UPLOAD_DIR = BASE_DIR / "static" / "uploads" / "avatars"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+ALLOWED_CONTENT_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
+
+
+def _thumbnail(image: Image.Image) -> Image.Image:
+    image = ImageOps.exif_transpose(image)
+    resample = getattr(Image, "Resampling", Image).LANCZOS
+    image.thumbnail((200, 200), resample)
+    return image
 
 
 async def save_avatar(file: UploadFile):
-    # 1. 验证文件类型
-    if file.content_type not in ["image/jpeg", "image/png"]:
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
         return None, "仅支持 JPG/PNG 格式"
 
-    # 2. 生成唯一文件名防止覆盖
-    extension = os.path.splitext(file.filename)[1]
-    file_name = f"{uuid.uuid4()}{extension}"
-    file_path = os.path.join(UPLOAD_DIR, file_name)
+    file_name = f"{uuid.uuid4()}{ALLOWED_CONTENT_TYPES[file.content_type]}"
+    file_path = UPLOAD_DIR / file_name
 
-    # 3. 图像处理 (优化与调整尺寸)
     try:
         content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+        image = Image.open(BytesIO(content))
+        image = _thumbnail(image)
 
-        with Image.open(file_path) as img:
-            # 统一调整为 200x200 的缩略图
-            img.thumbnail((200, 200))
-            img.save(file_path, optimize=True, quality=85)
+        if file.content_type == "image/jpeg":
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            image.save(file_path, format="JPEG", optimize=True, quality=85)
+        else:
+            if image.mode == "P":
+                image = image.convert("RGBA")
+            image.save(file_path, format="PNG", optimize=True)
 
         return f"/static/uploads/avatars/{file_name}", None
-    except Exception as e:
-        return None, str(e)
+    except Exception as exc:
+        if file_path.exists():
+            file_path.unlink(missing_ok=True)
+        return None, str(exc)

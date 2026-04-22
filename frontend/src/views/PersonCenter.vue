@@ -1,417 +1,543 @@
 <template>
-  <div class="layout-master">
-
-    <div class="cell br bb col-1"></div>
-
-    <div class="cell br bb col-2 flex-center logo-cell">
-      <img v-if="!isLogoError" :src="logoImg" @error="isLogoError = true" alt="辟谣系统" class="logo" />
-      <span v-else class="fallback-logo-text">辟谣系统个人中心</span>
-    </div>
-
-    <div class="cell br bb col-3 top-nav-cell">
-      <nav class="top-nav">
-        <a
-          href="javascript:void(0)"
-          class="nav-item"
-          :class="{ active: $route.path === '/user-center' }"
-          @click="router.push('/person_center')"
-        >
-          用户中心
-        </a>
-        <a
-          href="javascript:void(0)"
-          class="nav-item"
-          :class="{ active: $route.path === '/history' }"
-          @click ="router.push({ path: '/history', query: { id: userInfo.accountId } })"
-        >
-          历史查询/浏览
-        </a>
-      </nav>
-      <div class="top-right">
-        <el-dropdown trigger="click">
-          <span class="user-phone-dropdown">
-            {{ userInfo.phone || '未登录' }} <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item @click="handleLogout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+  <div class="profile-page">
+    <header class="profile-top surface-card">
+      <div>
+        <span class="section-chip">Profile Center</span>
+        <h1>账号资料与身份信息</h1>
+        <p>这里展示的是后端实时返回的用户资料，你可以在此维护个人信息与头像。</p>
       </div>
-    </div>
 
-    <div class="cell bb col-4"></div>
+      <div class="profile-top-actions">
+        <button class="ghost-btn" @click="router.push('/rumor_library')">主谣言库</button>
+        <button class="ghost-btn" @click="router.push('/main')">返回主页</button>
+        <button v-if="userStore.isAdmin" class="ghost-btn" @click="router.push('/admin')">进入管理台</button>
+        <button class="ghost-btn danger" @click="handleLogout">退出登录</button>
+      </div>
+    </header>
 
-    <div class="cell br bb col-1"></div>
-
-    <div class="cell br bb col-2 flex-center">
-      <el-icon class="hamburger-icon"><Menu /></el-icon>
-    </div>
-
-    <div class="cell br bb col-3 flex-center">
-      <span class="page-title">{{ pageTitle }}</span>
-    </div>
-
-    <div class="cell bb col-4"></div>
-
-    <div class="cell br col-1 bg-light"></div>
-
-    <div class="cell br col-2 bg-light">
-      <aside class="sidebar">
-        <div class="menu-group">
-          <a class="menu-item" :class="{ active: activeSideNav === 'account' }" @click="switchSideNav('account', '账号信息')">
-            账号信息
-          </a>
-          <a class="menu-item" :class="{ active: activeSideNav === 'rebind' }" @click="switchSideNav('rebind', '换绑手机')">
-            换绑手机
-          </a>
-          <a class="menu-item" :class="{ active: activeSideNav === 'password' }" @click="switchSideNav('password', '修改密码')">
-            修改密码
-          </a>
-        </div>
-
-        <div class="menu-group" style="margin-top: 20px;">
-          <div
-            class="menu-title"
-            @click="isOtherOpen = !isOtherOpen"
-            style="cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
-          >
-            其它
-            <el-icon><ArrowDown v-if="!isOtherOpen"/><ArrowUp v-else/></el-icon>
-          </div>
-
-          <el-collapse-transition>
-            <div v-show="isOtherOpen">
-              <a class="menu-item" @click="goBack">
-                返回
-              </a>
-              <a class="menu-item logout-item" style="margin-top: 0;" @click="handleLogout">
-                退出登录
-              </a>
-            </div>
-          </el-collapse-transition>
-        </div>
-      </aside>
-    </div>
-
-    <div class="cell br col-3 dynamic-content-box">
-
-      <vue-particles
-        id="tsparticles"
-        :options="particlesOptions"
-        class="particles-bg"
-      />
-
-      <transition name="fade" mode="out-in">
-        <div v-if="activeSideNav === 'account'" class="panel-wrapper" key="account">
-          <div class="info-card">
-            <div class="avatar-container">
-              <el-avatar :size="120" :src="userInfo.avatar" class="user-avatar">
-                <img src="https://cube.elemecdn.com/e/fd/0fc7d20532fdaf769a25683617711png.png" />
-              </el-avatar>
-            </div>
-            <div class="info-details">
-              <div class="info-row">
-                <span class="info-label">通行证ID:</span>
-                <span class="info-value">{{ userInfo.accountId || '加载中...' }}</span>
-              </div>
-              <div class="divider"></div>
-              <div class="info-row">
-                <span class="info-label">绑定手机:</span>
-                <span class="info-value">{{ userInfo.phone || '加载中...' }}</span>
-              </div>
-              <div class="divider"></div>
-              <div class="info-row">
-                <span class="info-label">实名认证:</span>
-                <span class="info-value">{{ userInfo.realNameAuth || '加载中...' }}</span>
-              </div>
-              <div class="divider"></div>
-              <div class="info-row">
-                <span class="info-label">账号状态:</span>
-                <span class="info-value status-normal">[ {{ userInfo.status === 1 ? '正常' : '异常' }} ]</span>
-              </div>
-            </div>
+    <section class="profile-grid">
+      <article class="surface-card profile-aside">
+        <div class="aside-head">
+          <img
+            :key="avatarPreviewUrl"
+            :src="avatarPreviewUrl"
+            class="avatar"
+            alt="avatar"
+            @error="handleAvatarError"
+          />
+          <div>
+            <h2>{{ userStore.profile?.username || '未命名用户' }}</h2>
+            <p>{{ userStore.isAdmin ? '管理员账号' : '普通用户账号' }}</p>
           </div>
         </div>
 
-        <div v-else-if="activeSideNav === 'rebind'" class="panel-wrapper" key="rebind">
-          <div class="info-card placeholder-card">
-            <el-empty description="换绑手机组件区域" />
+        <div class="aside-stats">
+          <div>
+            <span>账号状态</span>
+            <strong>{{ userStore.profile?.status || '未知' }}</strong>
+          </div>
+          <div>
+            <span>已保存历史</span>
+            <strong>{{ userStore.predictionHistory.length }} 条</strong>
+          </div>
+          <div>
+            <span>创建时间</span>
+            <strong>{{ userStore.profile?.create_time ? userStore.profile.create_time.slice(0, 10) : '--' }}</strong>
           </div>
         </div>
 
-        <div v-else-if="activeSideNav === 'password'" class="panel-wrapper" key="password">
-          <div class="info-card placeholder-card">
-            <el-empty description="修改密码组件区域" />
+        <el-upload
+          class="upload-slot"
+          :show-file-list="false"
+          :http-request="uploadAvatar"
+          accept="image/png,image/jpeg"
+        >
+          <el-button type="primary" plain>更换头像</el-button>
+        </el-upload>
+      </article>
+
+      <article class="surface-card profile-form-card">
+        <div class="section-head">
+          <div>
+            <span class="section-chip">Account Form</span>
+            <h2>维护个人资料</h2>
           </div>
         </div>
-      </transition>
-    </div>
 
-    <div class="cell col-4 bg-light"></div>
+        <el-skeleton v-if="loading" :rows="8" animated />
 
-    <div class="cell bt col-1"></div>
-    <div class="cell bt col-2 bg-light"></div>
-    <div class="cell bt col-3 bg-light"></div>
-    <div class="cell bt col-4"></div>
+        <el-form v-else label-position="top" class="profile-form">
+          <div class="form-grid">
+            <el-form-item label="用户名">
+              <el-input :model-value="userStore.profile?.username" disabled />
+            </el-form-item>
 
+            <el-form-item label="角色">
+              <el-input :model-value="userStore.profile?.role" disabled />
+            </el-form-item>
+
+            <el-form-item label="邮箱">
+              <el-input v-model="form.email" placeholder="请输入邮箱" clearable />
+            </el-form-item>
+
+            <el-form-item label="手机号">
+              <el-input v-model="form.phone" placeholder="请输入手机号" clearable />
+            </el-form-item>
+
+            <el-form-item label="性别">
+              <el-select v-model="form.gender" placeholder="请选择性别">
+                <el-option label="男" value="男" />
+                <el-option label="女" value="女" />
+                <el-option label="未知" value="未知" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="生日">
+              <el-date-picker
+                v-model="form.birthday"
+                type="date"
+                value-format="x"
+                placeholder="请选择生日"
+                :disabled-date="disabledFutureDates"
+              />
+            </el-form-item>
+
+            <el-form-item label="省份">
+              <el-select v-model="form.province" placeholder="请选择省份" filterable>
+                <el-option
+                  v-for="item in provinceOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item :label="subregionLabel">
+              <el-select
+                v-model="form.city"
+                :placeholder="subregionPlaceholder"
+                filterable
+                :disabled="cityOptions.length === 0"
+              >
+                <el-option
+                  v-for="item in cityOptions"
+                  :key="item"
+                  :label="item"
+                  :value="item"
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+
+          <div class="form-actions">
+            <el-button @click="resetForm">重置</el-button>
+            <el-button type="primary" :loading="saving" @click="saveProfile">保存修改</el-button>
+          </div>
+        </el-form>
+      </article>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Menu, Service, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
-import logoImg from '@/assets/rumor_log.png'
-import { useRouter, useRoute } from 'vue-router'
 
-// ================= 状态管理 =================
-const activeTopNav = ref('userCenter')
-const activeSideNav = ref('account')
-const pageTitle = ref('账号信息')
-const isOtherOpen = ref(false)
-const isLogoError = ref(false) // 监控 Logo 是否加载失败
+import api, { resolveAssetUrl } from '@/api/client'
+import {
+  getCitiesByProvince,
+  getSubregionLabel,
+  normalizeLocationSelection,
+  normalizeBirthdayValue,
+  provinceOptions,
+} from '@/constants/regions'
+import { useUserStore } from '@/stores/user'
+
+const fallbackAvatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+
 const router = useRouter()
+const userStore = useUserStore()
 
-// 粒子特效参数配置
-const particlesOptions = reactive({
-  background: { color: { value: "transparent" } },
-  fpsLimit: 60,
-  particles: {
-    color: { value: "#ffffff" },
-    links: { color: "#ffffff", distance: 150, enable: true, opacity: 0.5, width: 1 },
-    move: { enable: true, speed: 1.5 },
-    number: { density: { enable: true, area: 800 }, value: 60 },
-    opacity: { value: 0.5 },
-    size: { value: { min: 1, max: 3 } },
-  },
+const loading = ref(true)
+const saving = ref(false)
+const avatarVersion = ref(Date.now())
+
+const form = reactive({
+  avatar: '',
+  email: '',
+  phone: '',
+  gender: '未知',
+  province: '',
+  city: '',
+  birthday: '',
 })
 
-// ================= 用户动态数据 =================
-const userInfo = reactive({
-  accountId: '', phone: '', realNameAuth: '', status: 1, avatar: ''
-})
+const avatarPreviewUrl = computed(() => resolveAssetUrl(form.avatar, avatarVersion.value) || fallbackAvatar)
+const cityOptions = computed(() => getCitiesByProvince(form.province))
+const subregionLabel = computed(() => getSubregionLabel(form.province))
+const subregionPlaceholder = computed(() => `请选择${subregionLabel.value}`)
 
-// ================= 方法与逻辑 =================
-const switchSideNav = (navKey, title) => {
-  activeSideNav.value = navKey
-  pageTitle.value = title
-}
-const goBack = () => window.history.back()
+const disabledFutureDates = (time) => time.getTime() > Date.now()
 
-// ================= 模拟后端 API =================
-const apiService = {
-  getUserInfo: async () => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          code: 200,
-          data: {
-            accountId: '305669147945',
-            phone: '166****7235',
-            realNameAuth: '付** (5001**********0019)',
-            status: 1,
-            avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
-          }
-        })
-      }, 400)
-    })
-  },
-  logout: async () => Promise.resolve({ code: 200 })
-}
-
-onMounted(async () => {
-  try {
-    const res = await apiService.getUserInfo()
-    if (res.code === 200) Object.assign(userInfo, res.data)
-  } catch (error) {
-    ElMessage.error('数据加载失败')
-  }
-})
-
-const handleLogout = () => {
-  ElMessageBox.confirm('确认退出当前账号?', '提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-    roundButton: true // 样式优化：使用圆角按钮
-  }).then(async () => {
-    try {
-      // 1. 通知后端销毁 Session 或 Token
-      await apiService.logout()
-
-      // 2. 清除本地持久化存储
-      // 如果你使用了 Token 验证，通常存储在这里
-      localStorage.removeItem('user_token')
-      sessionStorage.clear()
-
-      // 3. 重置当前页面的响应式数据 (关键：防止内存泄露或数据残留)
-      Object.assign(userInfo, {
-        accountId: '',
-        phone: '',
-        realNameAuth: '',
-        status: 1,
-        avatar: ''
-      })
-
-      // 4. 成功提示
-      ElMessage({
-        type: 'success',
-        message: '已安全退出登录',
-        duration: 2000
-      })
-
-      // 5. 跳转至登录页
-      router.push('/')
-
-    } catch (error) {
-      // 处理接口调用失败的情况
-      ElMessage.error('退出操作异常，请刷新页面重试')
-      console.error('Logout Error:', error)
+watch(
+  () => form.province,
+  (nextProvince, previousProvince) => {
+    if (nextProvince === previousProvince) {
+      return
     }
-  }).catch(() => {
-    // 用户取消操作，无需额外逻辑
-  })
+
+    const normalizedLocation = normalizeLocationSelection(nextProvince, form.city)
+    if (form.province !== normalizedLocation.province) {
+      form.province = normalizedLocation.province
+    }
+    if (form.city !== normalizedLocation.city) {
+      form.city = normalizedLocation.city
+    }
+  },
+)
+
+const applyProfile = (profile) => {
+  const normalizedLocation = normalizeLocationSelection(profile?.province, profile?.city)
+
+  form.avatar = profile?.avatar || ''
+  form.email = profile?.email || ''
+  form.phone = profile?.phone || ''
+  form.gender = profile?.gender || '未知'
+  form.province = normalizedLocation.province
+  form.city = normalizedLocation.city
+  form.birthday = normalizeBirthdayValue(profile?.birthday)
+
+  avatarVersion.value = profile?.update_time ? new Date(profile.update_time).getTime() : Date.now()
 }
+
+const loadProfile = async () => {
+  loading.value = true
+  try {
+    const profile = await userStore.fetchCurrentUser()
+    applyProfile(profile)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '获取资料失败')
+  }
+
+  try {
+    await userStore.fetchPredictionHistory()
+  } catch {
+    // 历史数量获取失败时不阻断资料页展示
+  } finally {
+    loading.value = false
+  }
+}
+
+const resetForm = () => {
+  applyProfile(userStore.profile)
+}
+
+const handleAvatarError = (event) => {
+  if (event?.target) {
+    event.target.src = fallbackAvatar
+  }
+}
+
+const uploadAvatar = async ({ file, onSuccess, onError }) => {
+  const isValidFormat = ['image/jpeg', 'image/png'].includes(file.type)
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isValidFormat) {
+    ElMessage.error('仅支持 JPG / PNG 格式')
+    onError?.(new Error('invalid-format'))
+    return
+  }
+
+  if (!isLt2M) {
+    ElMessage.error('头像大小不能超过 2MB')
+    onError?.(new Error('file-too-large'))
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await api.post('/upload-avatar', formData)
+    const updatedProfileResponse = await api.put('/me', {
+      avatar: response.data.url,
+    })
+
+    userStore.updateProfile(updatedProfileResponse.data.data)
+    applyProfile(updatedProfileResponse.data.data)
+    ElMessage.success('头像上传成功')
+    onSuccess?.(updatedProfileResponse.data.data)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '头像上传失败')
+    onError?.(error)
+  }
+}
+
+const saveProfile = async () => {
+  const normalizedLocation = normalizeLocationSelection(form.province, form.city)
+
+  if (!/^\S+@\S+\.\S+$/.test(form.email)) {
+    ElMessage.warning('请输入有效邮箱')
+    return
+  }
+  if (!/^1[3-9]\d{9}$/.test(form.phone)) {
+    ElMessage.warning('请输入有效手机号')
+    return
+  }
+  if (!normalizedLocation.province || !normalizedLocation.city) {
+    ElMessage.warning(`请补充省份和${subregionLabel.value}信息`)
+    return
+  }
+
+  saving.value = true
+    try {
+      form.province = normalizedLocation.province
+      form.city = normalizedLocation.city
+
+      await api.put('/me', {
+        avatar: form.avatar,
+        email: form.email,
+        phone: form.phone,
+        gender: form.gender,
+        province: form.province,
+        city: form.city,
+        birthday_ts: form.birthday ? Math.floor(Number(form.birthday) / 1000) : null,
+      })
+
+      const latestProfile = await userStore.fetchCurrentUser()
+      applyProfile(latestProfile)
+      ElMessage.success('资料已更新')
+    } catch (error) {
+      ElMessage.error(error.response?.data?.detail || '资料更新失败')
+    } finally {
+      saving.value = false
+    }
+}
+
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm('确认退出当前账号吗？', '退出登录', {
+      type: 'warning',
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+    })
+    userStore.clearSession()
+    router.push('/')
+  } catch {
+    // noop
+  }
+}
+
+onMounted(() => {
+  userStore.bootstrap()
+  loadProfile()
+})
 </script>
 
 <style scoped>
-/* ================= 核心 CSS Grid 布局拓宽 ================= */
-.layout-master {
+.profile-page {
+  padding: 24px;
   display: grid;
-  /* 【核心修改】：缩小了两侧边距，加宽了中间内容区，使其向左右延展 */
-  grid-template-columns: minmax(5vw, 1fr) 240px minmax(800px, 1200px) minmax(5vw, 1fr);
-  /* 【核心修改】：增加底部 60px 的行，用于绘制底部网格线 */
-  grid-template-rows: 70px 50px 1fr 60px;
-  min-height: 100vh;
-  background-color: #f5f7fa;
+  gap: 22px;
 }
 
-.cell { box-sizing: border-box; }
-.br { border-right: 1px solid #dcdfe6; }
-.bb { border-bottom: 1px solid #dcdfe6; }
-.bt { border-top: 1px solid #dcdfe6; } /* 新增顶部边框，用于最后一行 */
-.bg-light { background-color: #fdfdfd; }
-.flex-center { display: flex; justify-content: center; align-items: center; }
-
-/* ================= 顶部导航区 ================= */
-.logo-cell { background-color: #fff; }
-.logo { max-width: 140px; max-height: 40px; }
-
-/* 优雅的字体 Logo 降级方案 */
-.fallback-logo-text {
-  font-size: 18px;
-  font-weight: 800;
-  color: #0098ea;
-  letter-spacing: 1px;
-  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  text-shadow: 0px 2px 4px rgba(0, 152, 234, 0.2);
-}
-
-.top-nav-cell {
-  background-color: #fff;
+.profile-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 0 40px;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 26px 28px;
+  border-radius: 28px;
 }
 
-.top-nav { height: 100%; display: flex; gap: 40px; }
-.nav-item {
-  height: 100%;
+.section-chip {
+  display: inline-flex;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(15, 123, 255, 0.08);
+  color: var(--brand-deep);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profile-top h1 {
+  margin: 14px 0 10px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+}
+
+.profile-top p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.profile-top-actions {
   display: flex;
-  align-items: center;
-  text-decoration: none;
-  color: #606266;
-  font-size: 16px;
-  position: relative;
-}
-.nav-item.active { color: #333; font-weight: bold; }
-.nav-item.active::after {
-  content: ''; position: absolute; bottom: 0; left: 0;
-  width: 100%; height: 3px; background-color: #0098ea;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.top-right { display: flex; gap: 30px; align-items: center; }
-.user-phone-dropdown { cursor: pointer; color: #333; display: flex; align-items: center; }
-
-/* ================= 次级标题区 ================= */
-.hamburger-icon { font-size: 20px; color: #909399; cursor: pointer; }
-.page-title { font-size: 16px; font-weight: bold; color: #333; }
-
-/* ================= 侧边栏菜单 ================= */
-.sidebar { padding: 30px 0; height: 100%; background-color: #fdfdfd; }
-.menu-group { display: flex; flex-direction: column; }
-.menu-title { padding: 0 30px 15px; font-size: 14px; color: #333; font-weight: bold; }
-
-.menu-item {
-  padding: 12px 30px;
-  font-size: 14px;
-  color: #606266;
+.ghost-btn {
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink-main);
+  padding: 12px 18px;
+  border-radius: 16px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border-radius: 0 20px 20px 0;
-  margin-right: 15px;
-  position: relative;
+}
+
+.ghost-btn.danger {
+  color: var(--danger);
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.7fr) minmax(0, 1.3fr);
+  gap: 18px;
+}
+
+.profile-aside,
+.profile-form-card {
+  padding: 24px;
+  border-radius: 28px;
+}
+
+.aside-head {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.avatar {
+  width: 108px;
+  height: 108px;
+  object-fit: cover;
+  border-radius: 28px;
+  border: 1px solid var(--line-soft);
+}
+
+.aside-head h2 {
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+}
+
+.aside-head p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.aside-stats {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.aside-stats > div {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(15, 123, 255, 0.04), rgba(255, 255, 255, 0.8));
+  border: 1px solid rgba(15, 123, 255, 0.08);
+}
+
+.aside-stats span {
   display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 
-.menu-item:hover { background-color: #f0f5ff; color: #0098ea; transform: translateX(5px); }
-.menu-item.active {
-  color: #fff;
-  background: linear-gradient(90deg, #0098ea, #53c2ff);
-  box-shadow: 0 4px 12px rgba(0, 152, 234, 0.3);
-  font-weight: bold;
+.aside-stats strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  color: var(--ink-strong);
 }
 
-.logout-item { margin-top: 20px; }
-.logout-item:hover { color: #f56c6c !important; background-color: #fef0f0 !important; }
+.section-head {
+  margin-bottom: 18px;
+}
 
-/* ================= 动态内容区 (绿框范围) ================= */
-.dynamic-content-box {
-  background-image: url('@/assets/userinfo_background.png');
-  background-size: cover;
-  background-position: center;
-  position: relative;
+.section-head h2 {
+  margin: 12px 0 0;
+  font-size: 28px;
+  color: var(--ink-strong);
+}
+
+.profile-form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.form-actions {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 40px;
-  overflow: hidden;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
-.particles-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
-.panel-wrapper { width: 100%; display: flex; justify-content: center; z-index: 1; }
-
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-/* ================= 信息卡片 ================= */
-.info-card {
-  width: 680px;
-  background-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-radius: 4px;
-  padding: 50px 60px;
-  display: flex;
-  align-items: center;
-  gap: 60px;
-  backdrop-filter: blur(4px);
+.upload-slot {
+  display: inline-flex;
 }
 
-.avatar-container {
-  flex-shrink: 0; border-radius: 50%; padding: 4px; background: #fff;
-  border: 2px solid #9c27b0; box-shadow: 0 4px 12px rgba(156, 39, 176, 0.2);
-  display: flex; justify-content: center; align-items: center;
+.profile-form :deep(.el-input__wrapper),
+.profile-form :deep(.el-select__wrapper),
+.profile-form :deep(.el-date-editor.el-input__wrapper) {
+  border-radius: 16px;
+  box-shadow: none;
+  min-height: 46px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.92);
 }
 
-.user-avatar { border-radius: 50%; border: 1px solid #ebeef5; }
-.info-details { flex: 1; display: flex; flex-direction: column; }
-.info-row { display: flex; align-items: center; padding: 12px 0; }
-.info-label { width: 100px; color: #606266; font-size: 14px; }
-.info-value { color: #303133; font-size: 15px; font-weight: 500; font-family: Arial, sans-serif; }
-.divider { height: 1px; background-color: #ebeef5; width: 100%; }
-.status-normal { color: #0098ea; font-weight: bold; }
-.placeholder-card { justify-content: center; min-height: 300px; }
+.profile-form :deep(.el-select),
+.profile-form :deep(.el-date-editor.el-input) {
+  width: 100%;
+}
+
+@media (max-width: 980px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .profile-page {
+    padding: 14px;
+  }
+
+  .profile-top,
+  .profile-aside,
+  .profile-form-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .profile-top,
+  .profile-top-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-actions {
+    justify-content: stretch;
+    flex-direction: column;
+  }
+}
 </style>

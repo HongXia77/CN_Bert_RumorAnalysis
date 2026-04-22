@@ -39,11 +39,11 @@ class User(Base):
     status: Mapped[str] = mapped_column(Enum("正常", "禁用", "未激活"), default="未激活", comment="账号状态")
 
     __table_args__ = (
-        Index("idx_username", "username"),
-        Index("idx_email", "email"),
-        Index("idx_phone", "phone"),
-        Index("idx_role", "role"),
-        Index("idx_status", "status"),
+        Index("idx_users_username", "username"),
+        Index("idx_users_email", "email"),
+        Index("idx_users_phone", "phone"),
+        Index("idx_users_role", "role"),
+        Index("idx_users_status", "status"),
         {
             "mysql_engine": "InnoDB",
             "mysql_charset": "utf8mb4",
@@ -56,8 +56,20 @@ class Rumor(Base):
     __tablename__ = "rumors"
 
     rumor_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="谣言ID")
-    content: Mapped[str] = mapped_column(Text, nullable=False, comment="谣言/常识/新闻文本内容")
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True, comment="主谣言标题")
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="主谣言核心断言文本")
+    claim_text: Mapped[str | None] = mapped_column(Text, nullable=True, comment="抽取的谣言断言文本")
+    truth_text: Mapped[str | None] = mapped_column(Text, nullable=True, comment="辟谣结论/事实摘要")
+    raw_content: Mapped[str | None] = mapped_column(Text, nullable=True, comment="原始文章正文")
+    source_name: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="来源平台或出处")
+    article_id: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="原始文章唯一标识")
+    article_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="原始文章链接")
+    publish_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="原始文章发布时间")
+    normalized_content: Mapped[str | None] = mapped_column(Text, nullable=True, comment="标准化后的文本")
+    merge_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="归并键哈希")
+    fact_signature: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="数字/时间等硬事实签名")
     label: Mapped[int] = mapped_column(Integer, nullable=False, comment="标签 0=非谣言 1=谣言")
+    upload_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="关联上传次数")
 
     # 根据来源自动设置状态
     status: Mapped[str] = mapped_column(
@@ -81,6 +93,7 @@ class Rumor(Base):
 
     refute_link: Mapped[str] = mapped_column(String(300), nullable=True, comment="辟谣出处链接")
     create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    latest_upload_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="最近一次上传时间")
     update_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now,
                                                   comment="更新时间")
 
@@ -88,18 +101,24 @@ class Rumor(Base):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # 系统录入 → 自动通过
-        if self.source_type == "系统自动录入":
+        if self.source_type == "system":
             self.status = "pass"
         # 用户上传 → 待审核
-        elif self.source_type == "用户上传":
+        elif self.source_type == "user":
             self.status = "not_pass"
 
     __table_args__ = (
-        Index("idx_label", "label"),
-        Index("idx_status", "status"),
-        Index("idx_source_type", "source_type"),
-        Index("idx_upload_user", "upload_user_id"),
-        Index("idx_create_time", create_time.desc()),
+        Index("idx_rumors_title", "title"),
+        Index("idx_rumors_label", "label"),
+        Index("idx_rumors_status", "status"),
+        Index("idx_rumors_source_type", "source_type"),
+        Index("idx_rumors_source_name", "source_name"),
+        Index("idx_rumors_article_id", "article_id"),
+        Index("idx_rumors_publish_time", publish_time.desc()),
+        Index("idx_rumors_upload_user_id", "upload_user_id"),
+        Index("idx_rumors_merge_key_hash", "merge_key_hash"),
+        Index("idx_rumors_fact_signature", "fact_signature"),
+        Index("idx_rumors_create_time", create_time.desc()),
         {
             "mysql_engine": "InnoDB",
             "mysql_charset": "utf8mb4",
@@ -107,7 +126,59 @@ class Rumor(Base):
         }
     )
 
-# 3. 谣言相似度关联表
+# 3. 用户上传谣言记录表
+class UserUploadRumor(Base):
+    __tablename__ = "user_upload_rumors"
+
+    upload_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="上传ID")
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="上传用户ID",
+    )
+    upload_content: Mapped[str] = mapped_column(Text, nullable=False, comment="用户上传的原始文本")
+    normalized_content: Mapped[str | None] = mapped_column(Text, nullable=True, comment="标准化后的上传文本")
+    merge_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="归并键哈希")
+    fact_signature: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="硬事实签名")
+    merged_rumor_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("rumors.rumor_id", ondelete="SET NULL"),
+        nullable=True,
+        comment="关联主谣言ID",
+    )
+    candidate_rumor_id: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="建议归并的候选主谣言ID")
+    upload_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="上传时间")
+    predicted_label: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="本次识别预测标签")
+    rumor_probability: Mapped[float | None] = mapped_column(Float, nullable=True, comment="本次识别谣言概率")
+    base_model_probability: Mapped[float | None] = mapped_column(Float, nullable=True, comment="基础模型谣言概率")
+    event_match_probability: Mapped[float | None] = mapped_column(Float, nullable=True, comment="主谣言匹配概率")
+    result_risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="风险等级")
+    result_verdict: Mapped[str | None] = mapped_column(String(120), nullable=True, comment="结果结论文案")
+    related_rumors_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="候选主谣言快照JSON")
+    status: Mapped[str] = mapped_column(
+        Enum("待合并", "已合并", "无效"),
+        default="待合并",
+        comment="上传记录状态",
+    )
+    merge_strategy: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="归并策略")
+    merge_confidence: Mapped[float | None] = mapped_column(Float, nullable=True, comment="归并置信度")
+    merge_reason: Mapped[str | None] = mapped_column(String(255), nullable=True, comment="归并说明")
+
+    __table_args__ = (
+        Index("idx_user_upload_rumors_user_id", "user_id"),
+        Index("idx_user_upload_rumors_merged_rumor_id", "merged_rumor_id"),
+        Index("idx_user_upload_rumors_candidate_rumor_id", "candidate_rumor_id"),
+        Index("idx_user_upload_rumors_merge_key_hash", "merge_key_hash"),
+        Index("idx_user_upload_rumors_upload_time", upload_time.desc()),
+        {
+            "mysql_engine": "InnoDB",
+            "mysql_charset": "utf8mb4",
+            "comment": "用户上传谣言记录表"
+        }
+    )
+
+# 4. 谣言相似度关联表
 class RumorSimilarity(Base):
     __tablename__ = "rumor_similarities"
 
@@ -120,8 +191,8 @@ class RumorSimilarity(Base):
     create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
 
     __table_args__ = (
-        Index("idx_rumor_pair", "rumor_id_1", "rumor_id_2"),  # 加速查询
-        Index("idx_similarity", similarity_score.desc()),
+        Index("idx_rumor_similarities_pair", "rumor_id_1", "rumor_id_2"),  # 加速查询
+        Index("idx_rumor_similarities_score", similarity_score.desc()),
 
         # 关键：防止谣言对重复
         UniqueConstraint("rumor_id_1", "rumor_id_2", name="uix_rumor_pair"),
@@ -131,6 +202,99 @@ class RumorSimilarity(Base):
             "mysql_charset": "utf8mb4",
             "comment": "相似谣言关联表（训练用）"
         }
+    )
+
+# 5. 速看来源平台表
+class QuickSourcePlatform(Base):
+    __tablename__ = "quick_source_platforms"
+
+    platform_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="平台ID")
+    name: Mapped[str] = mapped_column(String(120), nullable=False, comment="平台名称")
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, comment="平台唯一标识")
+    platform_type: Mapped[str] = mapped_column(
+        Enum("official", "creator"),
+        nullable=False,
+        comment="平台类型：权威机构/创作者平台",
+    )
+    short_label: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="短标签，如 PIYAO / NHC")
+    badge_text: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="徽标标签，如 国家级 / 健康")
+    subtitle: Mapped[str | None] = mapped_column(String(120), nullable=True, comment="副标题或平台说明")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="平台说明")
+    scene_hint: Mapped[str | None] = mapped_column(String(160), nullable=True, comment="适用场景或推荐说明")
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="平台访问链接")
+    theme_token: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="前端主题标识")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="排序值")
+    status: Mapped[str] = mapped_column(
+        Enum("active", "inactive"),
+        default="active",
+        nullable=False,
+        comment="状态：启用/停用",
+    )
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.now,
+        onupdate=datetime.now,
+        comment="更新时间",
+    )
+
+    __table_args__ = (
+        Index("idx_quick_source_platforms_slug", "slug"),
+        Index("idx_quick_source_platforms_type", "platform_type"),
+        Index("idx_quick_source_platforms_status", "status"),
+        Index("idx_quick_source_platforms_sort_order", "sort_order"),
+        {
+            "mysql_engine": "InnoDB",
+            "mysql_charset": "utf8mb4",
+            "comment": "速看来源平台表",
+        },
+    )
+
+
+# 6. 速看创作者表
+class QuickSourceCreator(Base):
+    __tablename__ = "quick_source_creators"
+
+    creator_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="创作者ID")
+    platform_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("quick_source_platforms.platform_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="所属创作者平台ID",
+    )
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False, comment="创作者名称")
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, comment="创作者唯一标识")
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="头像链接")
+    follower_text: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="粉丝数显示文本")
+    positioning: Mapped[str | None] = mapped_column(String(160), nullable=True, comment="定位说明")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="简介")
+    tags_json: Mapped[str | None] = mapped_column(Text, nullable=True, comment="标签JSON")
+    profile_url: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="主页链接")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="排序值")
+    status: Mapped[str] = mapped_column(
+        Enum("active", "inactive"),
+        default="active",
+        nullable=False,
+        comment="状态：启用/停用",
+    )
+    create_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, comment="创建时间")
+    update_time: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.now,
+        onupdate=datetime.now,
+        comment="更新时间",
+    )
+
+    __table_args__ = (
+        Index("idx_quick_source_creators_platform_id", "platform_id"),
+        Index("idx_quick_source_creators_slug", "slug"),
+        Index("idx_quick_source_creators_status", "status"),
+        Index("idx_quick_source_creators_sort_order", "sort_order"),
+        {
+            "mysql_engine": "InnoDB",
+            "mysql_charset": "utf8mb4",
+            "comment": "速看创作者表",
+        },
     )
 
 # 创建表结构

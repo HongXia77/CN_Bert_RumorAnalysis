@@ -1,204 +1,340 @@
 <template>
-  <div class="map-wrapper">
-    <div ref="mapDom" class="map-container" style="width: 800px; height: 600px;"></div>
+  <div class="analysis-page">
+    <header class="analysis-top surface-card">
+      <div>
+        <span class="section-chip">Admin Analytics</span>
+        <h1>系统分析总览</h1>
+        <p>结合管理员接口返回的数据，查看成员结构、账号状态和谣言库的整体分布。</p>
+      </div>
 
-    <Transition name="fade">
-      <button
-        v-show="currentMap !== 'china'"
-        class="back-btn"
-        @click="backToChina"
-      >
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-        返回全国
-      </button>
-    </Transition>
+      <div class="analysis-actions">
+        <button class="ghost-btn" @click="router.push('/admin')">返回管理台</button>
+        <button class="ghost-btn" @click="router.push('/main')">返回主页</button>
+      </div>
+    </header>
+
+    <section class="kpi-grid">
+      <article v-for="item in kpiCards" :key="item.title" class="kpi-card surface-card">
+        <span>{{ item.title }}</span>
+        <strong>{{ item.value }}</strong>
+        <p>{{ item.description }}</p>
+      </article>
+    </section>
+
+    <section class="chart-grid">
+      <article class="surface-card chart-card">
+        <div class="card-head">
+          <div>
+            <span class="section-chip">Users</span>
+            <h2>成员状态结构</h2>
+          </div>
+        </div>
+        <div ref="userChartRef" class="chart-box"></div>
+      </article>
+
+      <article class="surface-card chart-card">
+        <div class="card-head">
+          <div>
+            <span class="section-chip">Rumors</span>
+            <h2>谣言库概况</h2>
+          </div>
+        </div>
+        <div ref="rumorChartRef" class="chart-box"></div>
+      </article>
+    </section>
+
+    <section class="surface-card table-card">
+      <div class="card-head">
+        <div>
+          <span class="section-chip">Latest Members</span>
+          <h2>最近创建的账号</h2>
+        </div>
+      </div>
+
+      <el-table :data="overview.latest_users || []" stripe>
+        <el-table-column prop="username" label="用户名" min-width="140" />
+        <el-table-column prop="role" label="角色" width="120" />
+        <el-table-column prop="status" label="状态" width="120" />
+        <el-table-column prop="email" label="邮箱" min-width="220" />
+        <el-table-column prop="create_time" label="创建时间" min-width="180" />
+      </el-table>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, shallowRef, onMounted, onBeforeUnmount } from 'vue';
-import * as echarts from 'echarts';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
 
-const mapDom = ref(null);
-// 🚨 必须是 shallowRef，否则卡顿到无法使用！
-const chartInstance = shallowRef(null);
-const currentMap = ref('china');
+import api from '@/api/client'
 
-// 全国各省行政区划代码字典 (DataV 标准)
-const adcodeMap = {
-  '北京市': '110000', '天津市': '120000', '河北省': '130000', '山西省': '140000',
-  '内蒙古自治区': '150000', '辽宁省': '210000', '吉林省': '220000', '黑龙江省': '230000',
-  '上海市': '310000', '江苏省': '320000', '浙江省': '330000', '安徽省': '340000',
-  '福建省': '350000', '江西省': '360000', '山东省': '370000', '河南省': '410000',
-  '湖北省': '420000', '湖南省': '430000', '广东省': '440000', '广西壮族自治区': '450000',
-  '海南省': '460000', '重庆市': '500000', '四川省': '510000', '贵州省': '520000',
-  '云南省': '530000', '西藏自治区': '540000', '陕西省': '610000', '甘肃省': '620000',
-  '青海省': '630000', '宁夏回族自治区': '640000', '新疆维吾尔自治区': '650000',
-  '台湾省': '710000', '香港特别行政区': '810000', '澳门特别行政区': '820000'
-};
+const router = useRouter()
 
-/**
- * 直接从 DataV 官方 CDN 获取干净的地图数据
- */
-const fetchMapData = async (mapName) => {
-  let adcode = '100000'; // 默认全国
+const userChartRef = ref(null)
+const rumorChartRef = ref(null)
+const overview = ref({
+  user_stats: { total: 0, admin: 0, active: 0, disabled: 0, pending: 0 },
+  rumor_stats: { total: 0, approved: 0, pending: 0, ratio: { rumor: 0, normal: 0 } },
+  latest_users: [],
+})
 
-  if (mapName !== 'china') {
-    adcode = adcodeMap[mapName];
-    if (!adcode) {
-      console.warn(`未找到 ${mapName} 的行政区划代码`);
-      return null;
-    }
+let userChart = null
+let rumorChart = null
+
+const kpiCards = computed(() => [
+  {
+    title: '总用户数',
+    value: overview.value.user_stats.total,
+    description: '包含普通用户与管理员。',
+  },
+  {
+    title: '管理员数量',
+    value: overview.value.user_stats.admin,
+    description: '具备后台治理权限的账号数量。',
+  },
+  {
+    title: '正常账号',
+    value: overview.value.user_stats.active,
+    description: '当前可正常访问系统的账号。',
+  },
+  {
+    title: '谣言库规模',
+    value: overview.value.rumor_stats.total,
+    description: '来自数据库中可统计的谣言数据总数。',
+  },
+])
+
+const renderCharts = async () => {
+  await nextTick()
+
+  if (userChartRef.value) {
+    userChart?.dispose()
+    userChart = echarts.init(userChartRef.value)
+    userChart.setOption({
+      tooltip: { trigger: 'item' },
+      series: [
+        {
+          type: 'pie',
+          radius: ['48%', '72%'],
+          label: { color: '#334155' },
+          data: [
+            { value: overview.value.user_stats.active, name: '正常' },
+            { value: overview.value.user_stats.disabled, name: '禁用' },
+            { value: overview.value.user_stats.pending, name: '未激活' },
+            { value: overview.value.user_stats.admin, name: '管理员' },
+          ],
+          color: ['#0f7bff', '#ef4444', '#f59e0b', '#10b981'],
+        },
+      ],
+    })
   }
 
+  if (rumorChartRef.value) {
+    rumorChart?.dispose()
+    rumorChart = echarts.init(rumorChartRef.value)
+    rumorChart.setOption({
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: ['总量', '已通过', '待审核', '谣言类', '非谣言类'],
+        axisLabel: { color: '#475569' },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#475569' },
+        splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.2)' } },
+      },
+      series: [
+        {
+          type: 'bar',
+          barWidth: 28,
+          data: [
+            overview.value.rumor_stats.total,
+            overview.value.rumor_stats.approved,
+            overview.value.rumor_stats.pending,
+            overview.value.rumor_stats.ratio?.rumor || 0,
+            overview.value.rumor_stats.ratio?.normal || 0,
+          ],
+          itemStyle: {
+            borderRadius: [10, 10, 0, 0],
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#0f7bff' },
+              { offset: 1, color: '#0ea5e9' },
+            ]),
+          },
+        },
+      ],
+    })
+  }
+}
+
+const fetchOverview = async () => {
   try {
-    // 调用阿里云公开 JSON，省去你自己下载一堆文件的麻烦
-    const url = `https://geo.datav.aliyun.com/areas_v3/bound/${adcode}_full.json`;
-    const response = await fetch(url);
-    return await response.json();
+    const response = await api.get('/admin/overview')
+    overview.value = response.data.data
+    renderCharts()
   } catch (error) {
-    console.error('获取地图数据失败:', error);
-    return null;
+    ElMessage.error(error.response?.data?.detail || '系统分析数据获取失败')
   }
-};
+}
 
-const getMapOption = (mapName) => {
-  return {
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(0, 15, 36, 0.8)',
-      borderColor: '#1790cf',
-      textStyle: { color: '#fff' },
-      formatter: '{b}'
-    },
-    series: [{
-      type: 'map',
-      map: mapName,
-      roam: false,
-      zoom: 1.1,
-      label: {
-        show: true,
-        color: '#fff',
-        fontSize: 10 // 字体调小一点，避免拥挤
-      },
-      itemStyle: {
-        areaColor: '#0a1d3a',
-        borderColor: '#1790cf',
-        borderWidth: 1,
-      },
-      emphasis: {
-        label: { color: '#fff' },
-        itemStyle: { areaColor: '#1661ab' }
-      },
-      // 开启平滑过渡动画
-      animationDurationUpdate: 800,
-      animationEasingUpdate: 'cubicInOut'
-    }]
-  };
-};
-
-const renderMap = async (mapName) => {
-  if (!chartInstance.value) return;
-
-  // 开启加载动画，提升体验
-  chartInstance.value.showLoading({ maskColor: 'rgba(1, 10, 23, 0.8)', textColor: '#fff' });
-
-  const geoJson = await fetchMapData(mapName);
-
-  chartInstance.value.hideLoading();
-
-  if (geoJson) {
-    echarts.registerMap(mapName, geoJson);
-    currentMap.value = mapName;
-    // 第二个参数 true 表示清除上一次的配置，防止残留
-    chartInstance.value.setOption(getMapOption(mapName), true);
-  }
-};
-
-const backToChina = () => {
-  if (currentMap.value === 'china') return;
-  renderMap('china');
-};
+const handleResize = () => {
+  userChart?.resize()
+  rumorChart?.resize()
+}
 
 onMounted(() => {
-  chartInstance.value = echarts.init(mapDom.value);
-
-  // 1. 先渲染全国
-  renderMap('china');
-
-  // 2. 点击省份下钻
-  chartInstance.value.on('click', (params) => {
-    // 只有在全国视图下才允许钻取，防止在市级地图继续瞎钻报错
-    if (currentMap.value === 'china') {
-      renderMap(params.name);
-    }
-  });
-
-  window.addEventListener('resize', () => chartInstance.value?.resize());
-});
+  fetchOverview()
+  window.addEventListener('resize', handleResize)
+})
 
 onBeforeUnmount(() => {
-  chartInstance.value?.dispose();
-});
+  window.removeEventListener('resize', handleResize)
+  userChart?.dispose()
+  rumorChart?.dispose()
+})
 </script>
 
 <style scoped>
-.map-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 600px; /* 根据实际需求调整 */
-  background: #010A17;
-  overflow: hidden;
-  border-radius: 8px; /* 如果需要边框圆角 */
+.analysis-page {
+  padding: 24px;
+  display: grid;
+  gap: 22px;
 }
 
-.map-container {
-  width: 100%;
-  height: 100%;
+.analysis-top,
+.kpi-card,
+.chart-card,
+.table-card {
+  padding: 24px;
+  border-radius: 28px;
 }
 
-.back-btn {
-  position: absolute;
-  top: 20px;
-  left: 20px;
+.analysis-top {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgba(17, 128, 199, 0.15);
-  border: 1px solid rgba(23, 144, 207, 0.5);
-  color: #fff;
-  font-size: 14px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.section-chip {
+  display: inline-flex;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(15, 123, 255, 0.08);
+  color: var(--brand-deep);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.analysis-top h1,
+.card-head h2 {
+  margin: 14px 0 8px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+}
+
+.analysis-top p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.analysis-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.ghost-btn {
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink-main);
+  padding: 12px 18px;
+  border-radius: 16px;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  border-radius: 4px;
-  transition: all 0.3s ease;
-  z-index: 10; /* 确保在地图图层之上 */
 }
 
-.back-btn:hover {
-  background: rgba(17, 128, 199, 0.4);
-  border-color: #1790cf;
-  box-shadow: 0 0 10px rgba(23, 144, 207, 0.4);
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.icon {
-  width: 16px;
-  height: 16px;
+.kpi-card span {
+  color: var(--ink-soft);
+  font-size: 13px;
 }
 
-/* Vue 过渡动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+.kpi-card strong {
+  display: block;
+  margin: 12px 0 8px;
+  font-size: 32px;
+  color: var(--ink-strong);
 }
 
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateX(-10px);
+.kpi-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.card-head {
+  margin-bottom: 18px;
+}
+
+.chart-box {
+  width: 100%;
+  min-height: 360px;
+}
+
+.table-card :deep(.el-table) {
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+@media (max-width: 1080px) {
+  .kpi-grid,
+  .chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .analysis-page {
+    padding: 14px;
+  }
+
+  .analysis-top,
+  .kpi-card,
+  .chart-card,
+  .table-card {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .analysis-top,
+  .analysis-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .kpi-grid,
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

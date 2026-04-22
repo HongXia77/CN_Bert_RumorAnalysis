@@ -2,8 +2,10 @@
 __pycache__/
 *.py[cod]
 .env
+database.runtime.ini
 venv/
 .venv/
+local.sqlite3
 # 忽略大模型和日志
 model/
 logs/

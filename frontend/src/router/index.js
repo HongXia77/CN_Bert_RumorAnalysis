@@ -1,37 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '@/stores/user' // 假设你的 store 路径
 import { ElMessage } from 'element-plus'
 
-const router = createRouter({
-  history: createWebHistory(),
-  routes
-})
-
-router.beforeEach(async (to, from, next) => {
-  const userStore = useUserStore()
-
-  // 1. 检查路由是否需要登录
-  if (to.meta.requiresAuth) {
-    // 确保用户信息已从后端同步（如果是初次加载或刷新页面）
-    if (!userStore.isLoggedIn) {
-      ElMessage.warning('请先登录以访问此页面')
-      return next({ path: '/login', query: { redirect: to.fullPath } })
-    }
-
-    // 2. 角色权限校验 (管理员=1, 用户=0)
-    const requiredRole = to.meta.role || 0
-    const userRole = userStore.role
-
-    if (userRole < requiredRole) {
-      ElMessage.error('权限不足：该页面仅限管理员访问')
-      return next({ path: '/' }) // 拦截并退回首页
-    }
-  }
-
-  next() // 校验通过，放行
-})
-
-export default router
+import { useUserStore } from '@/stores/user'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -40,64 +10,96 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: () => import('../views/HomeView.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
+      meta: { guestOnly: true },
     },
     {
       path: '/main',
       name: 'main',
       component: () => import('../views/MainLayout.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
     },
     {
       path: '/person_center',
-      name: 'PersonCenter',
+      name: 'person-center',
       component: () => import('../views/PersonCenter.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
     },
     {
       path: '/quickly_look',
-      name: 'quickly_look',
+      name: 'quickly-look',
       component: () => import('../views/QuicklyLookView.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
-    },
-    {
-      path: '/data_analysis',
-      name: 'data_analysis',
-      component: () => import('../views/DataAnalysis.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
-    },
-    {
-      path: '/admin/users',
-      component: () => import('../views/admin/UserManagement.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 1 // 只有管理员能进入
-      }
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
     },
     {
       path: '/history',
+      name: 'history',
       component: () => import('../views/HistoryQueryOrBrows.vue'),
-      meta: {
-        requiresAuth: true,
-        role: 0 // 登录用户即可进入
-      }
-  }
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
+    },
+    {
+      path: '/rumor_library',
+      name: 'rumor-library',
+      component: () => import('../views/RumorLibraryView.vue'),
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
+    },
+    {
+      path: '/data_analysis',
+      name: 'data-analysis',
+      component: () => import('../views/DataAnalysis.vue'),
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/geo_analysis',
+      name: 'geo-analysis',
+      component: () => import('../views/GeoAnalysisView.vue'),
+      meta: { requiresAuth: true, roles: ['user', 'admin'] },
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminConsole.vue'),
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/admin/quick_sources',
+      name: 'admin-quick-sources',
+      component: () => import('../views/QuickSourceAdminView.vue'),
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/',
+    },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const userStore = useUserStore()
+  userStore.bootstrap()
+
+  if (userStore.token && !userStore.profile) {
+    try {
+      await userStore.fetchCurrentUser()
+    } catch {
+      userStore.clearSession()
+    }
+  }
+
+  if (to.meta.guestOnly && userStore.isLoggedIn) {
+    return userStore.isAdmin ? '/admin' : '/main'
+  }
+
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    ElMessage.warning('请先登录以访问系统内容')
+    return '/'
+  }
+
+  if (to.meta.roles?.length && !to.meta.roles.includes(userStore.role)) {
+    ElMessage.error('当前账号无权访问该页面')
+    return userStore.isAdmin ? '/admin' : '/main'
+  }
+
+  return true
 })
 
 export default router

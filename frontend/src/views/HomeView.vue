@@ -1,762 +1,1006 @@
 <template>
-  <div class="login-page">
-    <div class="left-section">
-      <div class="brand-content">
-        <div class="logo">
-          <div class="logo-icon"></div>
+  <div class="auth-page">
+    <section class="hero-panel">
+      <div class="hero-copy">
+        <span class="hero-badge">CN Rumor Control Center</span>
+        <h1>把谣言识别、权限管理和核查工作流收进一个控制台。</h1>
+        <p>
+          面向普通用户提供快速识别与可信入口，面向管理员提供成员管理、系统统计与审核视角。
+        </p>
+
+        <div class="hero-grid">
+          <article class="hero-card surface-card">
+            <span class="hero-icon hero-icon-blue">
+              <el-icon><Monitor /></el-icon>
+            </span>
+            <div>
+              <h3>统一前后端联动</h3>
+              <p>登录、注册、资料、角色权限与文本识别都走真实接口。</p>
+            </div>
+          </article>
+
+          <article class="hero-card surface-card">
+            <span class="hero-icon hero-icon-warm">
+              <el-icon><DataBoard /></el-icon>
+            </span>
+            <div>
+              <h3>管理员专属视角</h3>
+              <p>支持账号状态管理、角色切换与数据总览，补齐后台逻辑。</p>
+            </div>
+          </article>
+
+          <article class="hero-card surface-card">
+            <span class="hero-icon hero-icon-ice">
+              <el-icon><StarFilled /></el-icon>
+            </span>
+            <div>
+              <h3>面向核查的 UI</h3>
+              <p>重构为控制中心式布局，强调信息密度、视觉层级与操作反馈。</p>
+            </div>
+          </article>
         </div>
-        <h1 class="project-title">谣言分析系统</h1>
-        <p class="project-desc">智能识别 · 自动聚类 · 辟谣溯源</p>
       </div>
-    </div>
 
-    <div class="right-section">
-      <div class="card-wrapper">
+      <div class="hero-orbit">
+        <div class="orbit-ring ring-a"></div>
+        <div class="orbit-ring ring-b"></div>
+        <div class="orbit-dot orbit-dot-a"></div>
+        <div class="orbit-dot orbit-dot-b"></div>
+        <div class="hero-core">
+          <span>Rumor</span>
+          <strong>Signal</strong>
+        </div>
+      </div>
+    </section>
 
-        <el-card
-          class="card login-card"
-          :class="{
-            slideOut: isRegisterMode,
-            'is-inactive': isRegisterMode
-          }"
-          shadow="hover"
-          :body-style="{ padding: '30px', height: '100%', boxSizing: 'border-box', overflowY: 'auto' }"
-          @click="isRegisterMode && switchToLogin()"
+    <section class="auth-panel panel-shell">
+      <div class="auth-head">
+        <div>
+          <span class="auth-overline">System Access</span>
+          <h2>{{ activeCard === 'register' ? '创建工作席位' : '进入系统' }}</h2>
+          <p>{{ activeCard === 'register' ? '注册卡片当前位于上层，可点击底部登录卡片切换。' : '登录卡片当前位于上层，可再次点击底部注册卡片返回。' }}</p>
+        </div>
+        <el-tag effect="dark" type="primary" round>{{ activeCard === 'register' ? 'Register First' : 'Login First' }}</el-tag>
+      </div>
+
+      <el-alert
+        v-if="bootstrapState && !bootstrapState.admin_exists"
+        title="系统尚未初始化，第一个注册账号会自动获得管理员权限。"
+        type="warning"
+        show-icon
+        :closable="false"
+        class="bootstrap-alert"
+      />
+
+      <div class="auth-stack" :class="`is-${activeCard}`">
+        <article
+          class="auth-card login-card"
+          :class="{ active: activeCard === 'login', idle: activeCard !== 'login' }"
+          @click="promoteCard('login')"
         >
-          <div class="auth-header">
-            <h2>欢迎回来</h2>
-            <p>请登录您的账号</p>
+          <div v-if="activeCard !== 'login'" class="card-peek">
+            <span class="peek-chip">Login</span>
+            <h3>已有账号</h3>
+            <p>点击这张下层卡片，切换到登录视图并直接进入控制台。</p>
           </div>
 
-          <el-form :model="loginForm" size="large" @keyup.enter="handleLogin">
-            <el-form-item :error="loginErrors.username">
-              <label class="form-label">用户名/邮箱</label>
+          <template v-else>
+            <div class="card-shell">
+              <div class="card-header">
+                <span class="card-chip">登录卡片</span>
+                <button class="peek-action" type="button" @click.stop="promoteCard('register')">切到注册</button>
+              </div>
+
+          <el-form label-position="top" class="auth-form" @submit.prevent>
+            <el-form-item label="账号">
               <el-input
                 v-model="loginForm.username"
-                placeholder="请输入用户名或邮箱"
-                @input="clearError('login')"
+                placeholder="用户名 / 邮箱 / 手机号"
+                size="large"
                 clearable
-              />
+              >
+                <template #prefix>
+                  <el-icon><UserFilled /></el-icon>
+                </template>
+              </el-input>
             </el-form-item>
 
-            <el-form-item :error="loginErrors.password">
-              <label class="form-label">密码</label>
+            <el-form-item label="密码">
               <el-input
                 v-model="loginForm.password"
-                type="password"
                 placeholder="请输入密码"
-                @input="clearError('login')"
-                show-password
-                clearable
-              />
-            </el-form-item>
-
-            <div v-if="loginErrors.username || loginErrors.password" class="error-tip">
-              {{ loginErrors.username || loginErrors.password }}
-            </div>
-
-            <el-form-item>
-              <div class="action-row">
-                <el-checkbox v-model="loginForm.remember">记住我</el-checkbox>
-                <el-link type="primary" :underline="false" class="forget">忘记密码？</el-link>
-              </div>
-            </el-form-item>
-
-            <el-form-item class="mt-4">
-              <el-button
-                type="primary"
-                class="submit-btn"
-                @click.stop="handleLogin"
-                :loading="isLoginLoading"
                 size="large"
+                show-password
+                type="password"
+                clearable
+                @keyup.enter="handleLogin"
               >
-                {{ isLoginLoading ? '登录中...' : '登录' }}
-              </el-button>
+                <template #prefix>
+                  <el-icon><Lock /></el-icon>
+                </template>
+              </el-input>
             </el-form-item>
-          </el-form>
-        </el-card>
 
-        <el-popover
-          placement="right-start"
-          :width="220"
-          trigger="hover"
-          :show-after="150"
-          :hide-after="100"
-          :disabled="isRegisterMode"
-          :teleported="false"
-          popper-class="custom-register-popover"
-        >
-          <template #reference>
-            <el-card
-              class="card lower-card"
-              :class="{
-                slideIn: isRegisterMode,
-                'is-inactive': !isRegisterMode
-              }"
-              shadow="hover"
-              :body-style="{ padding: '30px', height: '100%', boxSizing: 'border-box', overflowY: 'auto' }"
-              @click="!isRegisterMode && switchToRegister()"
+            <div class="sub-actions">
+              <el-checkbox v-model="loginForm.remember">记住账号</el-checkbox>
+              <span class="auth-hint">首次管理员注册会自动初始化后台角色。</span>
+            </div>
+
+            <el-button
+              class="primary-btn"
+              type="primary"
+              size="large"
+              :loading="loginLoading"
+              @click="handleLogin"
             >
-
-              <div v-if="!isRegisterMode" class="lower-card-content teaser-content">
-                <h2>还没有账号？</h2>
-                <p>立即注册，加入谣言分析系统</p>
-                <div class="switch-text">
-                  <el-button type="primary" link class="register-link">立即注册</el-button>
-                </div>
-              </div>
-
-              <div v-else class="lower-card-content full-form-content">
-                <div class="register-header">
-                  <div>
-                    <h2 class="form-title">创建账号</h2>
-                    <p class="form-subtitle">请填写您的详细信息以完成注册。</p>
-                  </div>
-                  <el-button plain icon="Back" @click.stop="switchToLogin" class="back-btn">
-                    返回登录
-                  </el-button>
-                </div>
-
-                <el-form
-                  ref="registerFormRef"
-                  :model="registerForm"
-                  :rules="registerRules"
-                  label-position="top"
-                  require-asterisk-position="right"
-                  @click.stop
-                >
-                  <el-form-item label="头像 (选填)" prop="avatar" class="avatar-item">
-                    <el-upload
-                      class="avatar-uploader"
-                      action="/api/upload/mock"
-                      :show-file-list="false"
-                      :on-success="handleAvatarSuccess"
-                      :before-upload="beforeAvatarUpload"
-                      accept="image/png, image/jpeg"
-                    >
-                      <img v-if="registerForm.avatar" :src="registerForm.avatar" class="avatar" alt="预览" />
-                      <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
-                    </el-upload>
-                  </el-form-item>
-
-                  <div class="form-grid">
-                    <el-form-item label="用户名" prop="username">
-                      <el-input v-model="registerForm.username" placeholder="支持中英文字符或数字" clearable />
-                    </el-form-item>
-
-                    <el-form-item label="密码" prop="password">
-                      <el-input v-model="registerForm.password" type="password" placeholder="字母/数字/特殊字符" show-password />
-                    </el-form-item>
-
-                    <el-form-item label="电子邮箱" prop="email">
-                      <el-input v-model="registerForm.email" type="email" placeholder="example@domain.com" clearable />
-                    </el-form-item>
-
-                    <el-form-item label="手机号码" prop="phone">
-                      <el-input v-model="registerForm.phone" placeholder="请输入11位手机号" clearable>
-                        <template #prepend>+86</template>
-                      </el-input>
-                    </el-form-item>
-
-                    <el-form-item label="性别" prop="gender">
-                      <el-select v-model="registerForm.gender" placeholder="请选择" class="w-100">
-                        <el-option label="男" value="Male" />
-                        <el-option label="女" value="Female" />
-                        <el-option label="未知" value="Unknown" />
-                      </el-select>
-                    </el-form-item>
-
-                    <el-form-item label="生日" prop="birthday">
-                      <el-date-picker v-model="registerForm.birthday" type="date" placeholder="选择日期" value-format="x" :disabled-date="disabledFutureDates" class="w-100" />
-                    </el-form-item>
-
-                    <el-form-item label="省份" prop="province">
-                      <el-select v-model="registerForm.province" placeholder="请选择省份" @change="handleProvinceChange" class="w-100">
-                        <el-option v-for="(cities, prov) in regionData" :key="prov" :label="prov" :value="prov" />
-                      </el-select>
-                    </el-form-item>
-
-                    <el-form-item label="城市" prop="city">
-                      <el-select v-model="registerForm.city" placeholder="请选择城市" :disabled="!registerForm.province" class="w-100">
-                        <el-option v-for="city in availableCities" :key="city" :label="city" :value="city" />
-                      </el-select>
-                    </el-form-item>
-                  </div>
-
-                  <el-form-item class="submit-item mt-4">
-                    <el-button type="primary" size="large" :loading="isRegisterLoading" @click.stop="handleRegister(registerFormRef)" class="submit-btn">
-                      立即注册
-                    </el-button>
-                  </el-form-item>
-                </el-form>
-              </div>
-
-            </el-card>
+              {{ loginLoading ? '正在登录...' : '登录并进入控制台' }}
+            </el-button>
+          </el-form>
+            </div>
           </template>
+        </article>
 
-          <div class="popover-inner-content">
-            <div class="api-image-placeholder">
-              <el-icon class="img-icon"><Picture /></el-icon>
-              <span>动态图片加载区</span>
-            </div>
-            <div class="popover-text">
-              <span class="highlight">没有账号？</span>注册一个吧！
-            </div>
+        <article
+          class="auth-card register-card"
+          :class="{ active: activeCard === 'register', idle: activeCard !== 'register' }"
+          @click="promoteCard('register')"
+        >
+          <div v-if="activeCard !== 'register'" class="card-peek">
+            <span class="peek-chip">Register</span>
+            <h3>创建账号</h3>
+            <p>点击这张下层卡片，返回注册视图并继续完善资料。</p>
           </div>
-        </el-popover>
 
+          <template v-else>
+            <div class="card-shell">
+              <div class="card-header">
+                <span class="card-chip">注册卡片</span>
+                <button class="peek-action" type="button" @click.stop="promoteCard('login')">切到登录</button>
+              </div>
+
+          <el-form label-position="top" class="auth-form register-form" @submit.prevent>
+            <div class="avatar-block surface-card">
+              <el-upload
+                class="avatar-uploader"
+                :show-file-list="false"
+                :http-request="uploadAvatar"
+                accept="image/png,image/jpeg"
+              >
+                <img v-if="registerForm.avatar" :src="registerAvatarPreviewUrl" class="avatar-preview" alt="avatar" />
+                <div v-else class="avatar-placeholder">
+                  <el-icon><Plus /></el-icon>
+                  <span>上传头像</span>
+                </div>
+              </el-upload>
+              <p>支持 JPG / PNG，建议正方形头像。</p>
+            </div>
+
+            <div class="form-grid">
+              <el-form-item label="用户名">
+                <el-input v-model="registerForm.username" placeholder="请输入用户名" clearable>
+                  <template #prefix>
+                    <el-icon><UserFilled /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item label="密码">
+                <el-input v-model="registerForm.password" type="password" show-password placeholder="至少 8 位">
+                  <template #prefix>
+                    <el-icon><Lock /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item label="邮箱">
+                <el-input v-model="registerForm.email" placeholder="you@example.com" clearable>
+                  <template #prefix>
+                    <el-icon><Message /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item label="手机号">
+                <el-input v-model="registerForm.phone" placeholder="请输入手机号" clearable>
+                  <template #prefix>
+                    <el-icon><Phone /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+
+              <el-form-item label="性别">
+                <el-select v-model="registerForm.gender" placeholder="请选择性别">
+                  <el-option label="男" value="男" />
+                  <el-option label="女" value="女" />
+                  <el-option label="未知" value="未知" />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="生日">
+                <el-date-picker
+                  v-model="registerForm.birthday"
+                  type="date"
+                  value-format="x"
+                  placeholder="选择日期"
+                  :disabled-date="disabledFutureDates"
+                />
+              </el-form-item>
+
+              <el-form-item label="省份">
+                <el-select v-model="registerForm.province" placeholder="请选择省份" filterable>
+                  <el-option
+                    v-for="item in provinceOptions"
+                    :key="item"
+                    :label="item"
+                    :value="item"
+                  />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item :label="registerSubregionLabel">
+                <el-select
+                  v-model="registerForm.city"
+                  :placeholder="registerSubregionPlaceholder"
+                  filterable
+                  :disabled="registerCityOptions.length === 0"
+                >
+                  <el-option
+                    v-for="item in registerCityOptions"
+                    :key="item"
+                    :label="item"
+                    :value="item"
+                  />
+                </el-select>
+              </el-form-item>
+            </div>
+
+            <el-button
+              class="primary-btn"
+              type="primary"
+              size="large"
+              :loading="registerLoading"
+              @click="handleRegister"
+            >
+              {{ registerLoading ? '正在创建账号...' : '注册并开始使用' }}
+            </el-button>
+          </el-form>
+            </div>
+          </template>
+        </article>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import axios from 'axios'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Back, Picture, Check } from '@element-plus/icons-vue'
+import {
+  DataBoard,
+  Lock,
+  Location,
+  Message,
+  Monitor,
+  Phone,
+  Plus,
+  StarFilled,
+  UserFilled,
+} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { onMounted } from "vue"
 
-// 初始化路由
+import api, { resolveAssetUrl } from '@/api/client'
+import {
+  getCitiesByProvince,
+  getSubregionLabel,
+  normalizeLocationSelection,
+  provinceOptions,
+} from '@/constants/regions'
+import { useUserStore } from '@/stores/user'
+
 const router = useRouter()
+const userStore = useUserStore()
 
-// ================= 交互状态 =================
-const isRegisterMode = ref(false)
+const activeCard = ref('register')
+const loginLoading = ref(false)
+const registerLoading = ref(false)
+const bootstrapState = ref(null)
 
-const switchToRegister = () => {
-  isRegisterMode.value = true
-  clearError('login')
+const loginForm = reactive({
+  username: '',
+  password: '',
+  remember: false,
+})
+
+const registerForm = reactive({
+  username: '',
+  password: '',
+  email: '',
+  phone: '',
+  avatar: '',
+  gender: '未知',
+  province: '',
+  city: '',
+  birthday: '',
+})
+
+const registerAvatarPreviewUrl = computed(() => resolveAssetUrl(registerForm.avatar))
+const registerCityOptions = computed(() => getCitiesByProvince(registerForm.province))
+const registerSubregionLabel = computed(() => getSubregionLabel(registerForm.province))
+const registerSubregionPlaceholder = computed(() => `请选择${registerSubregionLabel.value}`)
+
+const promoteCard = (target) => {
+  if (activeCard.value === target) {
+    return
+  }
+  activeCard.value = target
 }
 
-const switchToLogin = () => {
-  isRegisterMode.value = false
-  // 返回登录时可选重置注册表单
-  if (registerFormRef.value) {
-    registerFormRef.value.resetFields()
+watch(
+  () => registerForm.province,
+  (nextProvince, previousProvince) => {
+    if (nextProvince === previousProvince) {
+      return
+    }
+
+    const normalizedLocation = normalizeLocationSelection(nextProvince, registerForm.city)
+    if (registerForm.province !== normalizedLocation.province) {
+      registerForm.province = normalizedLocation.province
+    }
+    if (registerForm.city !== normalizedLocation.city) {
+      registerForm.city = normalizedLocation.city
+    }
+  },
+)
+
+const redirectByRole = (role) => {
+  router.push(role === 'admin' ? '/admin' : '/main')
+}
+
+const disabledFutureDates = (time) => time.getTime() > Date.now()
+
+const loadBootstrapState = async () => {
+  try {
+    const response = await api.get('/bootstrap-status')
+    bootstrapState.value = response.data.data
+  } catch {
+    bootstrapState.value = null
   }
 }
 
-// ================= 登录逻辑 =================
-const isLoginLoading = ref(false)
-const loginForm = reactive({ username: '', password: '', remember: false })
-const loginErrors = reactive({ username: '', password: '' })
-
-const clearError = (type) => {
-  if (type === 'login') {
-    loginErrors.username = ''; loginErrors.password = ''
+const validateLogin = () => {
+  if (!loginForm.username.trim()) {
+    ElMessage.warning('请输入登录账号')
+    return false
   }
+  if (!loginForm.password) {
+    ElMessage.warning('请输入登录密码')
+    return false
+  }
+  return true
 }
 
-const validateLoginForm = () => {
-  let isValid = true
-  if (!loginForm.username.trim()) { loginErrors.username = '请输入用户名或邮箱'; isValid = false }
-  if (!loginForm.password) { loginErrors.password = '请输入密码'; isValid = false }
-  return isValid
+const validateRegister = () => {
+  const normalizedLocation = normalizeLocationSelection(registerForm.province, registerForm.city)
+
+  if (!registerForm.username.trim()) {
+    ElMessage.warning('请输入用户名')
+    return false
+  }
+  if (registerForm.password.length < 8) {
+    ElMessage.warning('注册密码至少需要 8 位')
+    return false
+  }
+  if (!/^\S+@\S+\.\S+$/.test(registerForm.email)) {
+    ElMessage.warning('请输入有效邮箱')
+    return false
+  }
+  if (!/^1[3-9]\d{9}$/.test(registerForm.phone)) {
+    ElMessage.warning('请输入有效手机号')
+    return false
+  }
+  if (!normalizedLocation.province || !normalizedLocation.city) {
+    ElMessage.warning(`请补充省份和${registerSubregionLabel.value}信息`)
+    return false
+  }
+  if (!registerForm.birthday) {
+    ElMessage.warning('请选择生日')
+    return false
+  }
+  return true
 }
 
 const handleLogin = async () => {
-  clearError('login')
-  if (!validateLoginForm()) return
+  if (!validateLogin()) return
 
-  isLoginLoading.value = true
-
+  loginLoading.value = true
   try {
-    // 1. 发送真实的 POST 请求到你的 FastAPI 后端
-    const response = await axios.post('http://127.0.0.1:8000/api/user/login', {
+    const response = await api.post('/login', {
       username: loginForm.username,
-      password: loginForm.password
+      password: loginForm.password,
     })
 
-    const resData = response.data
+    userStore.setSession(response.data)
 
-    // 2. 判断后端返回的自定义状态码
-    if (resData.code === 200) {
-      ElMessage.success('登录成功！')
-
-      // 3. 将用户信息（包含 role 用户级别）缓存到本地，供其他页面使用
-      localStorage.setItem('userInfo', JSON.stringify(resData.data))
-
-      // (可选) 如果勾选了"记住我"，可以额外存一个标记或长时间的Token
-      if (loginForm.remember) {
-         localStorage.setItem('rememberUser', loginForm.username)
-      }
-
-      // 4. 根据用户级别 (role) 动态跳转页面
-      if (resData.data.role === 'admin') {
-        // 如果是管理员，跳转到管理后台界面 (确保你在 router/index.js 中配了此路由)
-        router.push('/main')
-      } else {
-        // 普通用户跳转到主页
-        router.push('/main')
-      }
-    }
-  } catch (error) {
-    // 捕获 FastAPI 后端抛出的 HTTPException (比如 400 错误)
-    if (error.response && error.response.status === 400) {
-      // 显示后端返回的具体错误信息 (如"密码错误"或"账号未激活")
-      ElMessage.error(error.response.data.detail || '登录失败')
+    if (loginForm.remember) {
+      localStorage.setItem('remember_user_account', loginForm.username)
     } else {
-      // 捕获网络不通等其他问题
-      ElMessage.error('网络请求失败，请检查后端服务是否启动')
+      localStorage.removeItem('remember_user_account')
     }
+
+    ElMessage.success(response.data.message || '登录成功')
+    redirectByRole(response.data.data.role)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '登录失败，请检查后端服务')
   } finally {
-    // 无论成功失败，关闭 loading 状态
-    isLoginLoading.value = false
+    loginLoading.value = false
+  }
+}
+
+const handleRegister = async () => {
+  if (!validateRegister()) return
+
+  registerLoading.value = true
+  try {
+    const normalizedLocation = normalizeLocationSelection(registerForm.province, registerForm.city)
+    registerForm.province = normalizedLocation.province
+    registerForm.city = normalizedLocation.city
+
+    const formData = new FormData()
+    Object.entries(registerForm).forEach(([key, value]) => {
+      if (key === 'birthday') {
+        formData.append('birthday_ts', value)
+      } else {
+        formData.append(key, value)
+      }
+    })
+
+    const response = await api.post('/register', formData)
+    userStore.setSession(response.data)
+    ElMessage.success(response.data.message || '注册成功')
+    redirectByRole(response.data.data.role)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '注册失败，请检查表单内容')
+  } finally {
+    registerLoading.value = false
+  }
+}
+
+const uploadAvatar = async ({ file, onSuccess, onError }) => {
+  const isValidFormat = ['image/jpeg', 'image/png'].includes(file.type)
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isValidFormat) {
+    ElMessage.error('仅支持 JPG / PNG 格式')
+    onError?.(new Error('invalid-format'))
+    return
+  }
+
+  if (!isLt2M) {
+    ElMessage.error('头像大小不能超过 2MB')
+    onError?.(new Error('file-too-large'))
+    return
+  }
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post('/upload-avatar', formData)
+    registerForm.avatar = response.data.url
+    ElMessage.success('头像上传成功')
+    onSuccess?.(response.data)
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '头像上传失败')
+    onError?.(error)
   }
 }
 
 onMounted(() => {
-  const remembered = localStorage.getItem('rememberUser')
-  if (remembered) {
-    loginForm.username = remembered
+  userStore.bootstrap()
+
+  const rememberedAccount = localStorage.getItem('remember_user_account')
+  if (rememberedAccount) {
+    loginForm.username = rememberedAccount
     loginForm.remember = true
   }
+
+  loadBootstrapState()
 })
-
-// ================= 注册逻辑 =================
-const registerFormRef = ref(null)
-const isRegisterLoading = ref(false)
-
-const registerForm = reactive({
-  username: '', password: '', email: '', phone: '',
-  avatar: '', gender: '', province: '', city: '', birthday: ''
-})
-
-// 地区数据 (简略展示，可自行填充完整)
-// --- 模拟地区数据 ---
-const regionData = {
-  // 直辖市
-  '北京市': ['北京市'],
-  '天津市': ['天津市'],
-  '上海市': ['上海市'],
-  '重庆市': ['重庆市'],
-
-  // 河北省
-  '河北省': [
-    '石家庄市', '唐山市', '秦皇岛市', '邯郸市', '邢台市',
-    '保定市', '张家口市', '承德市', '沧州市', '廊坊市', '衡水市'
-  ],
-
-  // 山西省
-  '山西省': [
-    '太原市', '大同市', '阳泉市', '长治市', '晋城市',
-    '朔州市', '晋中市', '运城市', '忻州市', '临汾市', '吕梁市'
-  ],
-
-  // 内蒙古自治区
-  '内蒙古自治区': [
-    '呼和浩特市', '包头市', '乌海市', '赤峰市', '通辽市',
-    '鄂尔多斯市', '呼伦贝尔市', '巴彦淖尔市', '乌兰察布市',
-    '兴安盟', '锡林郭勒盟', '阿拉善盟'
-  ],
-
-  // 辽宁省
-  '辽宁省': [
-    '沈阳市', '大连市', '鞍山市', '抚顺市', '本溪市',
-    '丹东市', '锦州市', '营口市', '阜新市', '辽阳市',
-    '盘锦市', '铁岭市', '朝阳市', '葫芦岛市'
-  ],
-
-  // 吉林省
-  '吉林省': [
-    '长春市', '吉林市', '四平市', '辽源市', '通化市',
-    '白山市', '松原市', '白城市', '延边朝鲜族自治州'
-  ],
-
-  // 黑龙江省
-  '黑龙江省': [
-    '哈尔滨市', '齐齐哈尔市', '鸡西市', '鹤岗市', '双鸭山市',
-    '大庆市', '伊春市', '佳木斯市', '七台河市', '牡丹江市',
-    '黑河市', '绥化市', '大兴安岭地区'
-  ],
-
-  // 江苏省
-  '江苏省': [
-    '南京市', '无锡市', '徐州市', '常州市', '苏州市',
-    '南通市', '连云港市', '淮安市', '盐城市', '扬州市',
-    '镇江市', '泰州市', '宿迁市'
-  ],
-
-  // 浙江省
-  '浙江省': [
-    '杭州市', '宁波市', '温州市', '嘉兴市', '湖州市',
-    '绍兴市', '金华市', '衢州市', '舟山市', '台州市', '丽水市'
-  ],
-
-  // 安徽省
-  '安徽省': [
-    '合肥市', '芜湖市', '蚌埠市', '淮南市', '马鞍山市',
-    '淮北市', '铜陵市', '安庆市', '黄山市', '滁州市',
-    '阜阳市', '宿州市', '六安市', '亳州市', '池州市', '宣城市'
-  ],
-
-  // 福建省
-  '福建省': [
-    '福州市', '厦门市', '莆田市', '三明市', '泉州市',
-    '漳州市', '南平市', '龙岩市', '宁德市'
-  ],
-
-  // 江西省
-  '江西省': [
-    '南昌市', '景德镇市', '萍乡市', '九江市', '新余市',
-    '鹰潭市', '赣州市', '吉安市', '宜春市', '抚州市', '上饶市'
-  ],
-
-  // 山东省
-  '山东省': [
-    '济南市', '青岛市', '淄博市', '枣庄市', '东营市',
-    '烟台市', '潍坊市', '济宁市', '泰安市', '威海市',
-    '日照市', '临沂市', '德州市', '聊城市', '滨州市', '菏泽市'
-  ],
-
-  // 河南省
-  '河南省': [
-    '郑州市', '开封市', '洛阳市', '平顶山市', '安阳市',
-    '鹤壁市', '新乡市', '焦作市', '濮阳市', '许昌市',
-    '漯河市', '三门峡市', '南阳市', '商丘市', '信阳市',
-    '周口市', '驻马店市', '济源市'
-  ],
-
-  // 湖北省
-  '湖北省': [
-    '武汉市', '黄石市', '十堰市', '宜昌市', '襄阳市',
-    '鄂州市', '荆门市', '孝感市', '荆州市', '黄冈市',
-    '咸宁市', '随州市', '恩施土家族苗族自治州', '仙桃市',
-    '潜江市', '天门市', '神农架林区'
-  ],
-
-  // 湖南省
-  '湖南省': [
-    '长沙市', '株洲市', '湘潭市', '衡阳市', '邵阳市',
-    '岳阳市', '常德市', '张家界市', '益阳市', '郴州市',
-    '永州市', '怀化市', '娄底市', '湘西土家族苗族自治州'
-  ],
-
-  // 广东省
-  '广东省': [
-    '广州市', '韶关市', '深圳市', '珠海市', '汕头市',
-    '佛山市', '江门市', '湛江市', '茂名市', '肇庆市',
-    '惠州市', '梅州市', '汕尾市', '河源市', '阳江市',
-    '清远市', '东莞市', '中山市', '潮州市', '揭阳市', '云浮市'
-  ],
-
-  // 广西壮族自治区
-  '广西壮族自治区': [
-    '南宁市', '柳州市', '桂林市', '梧州市', '北海市',
-    '防城港市', '钦州市', '贵港市', '玉林市', '百色市',
-    '贺州市', '河池市', '来宾市', '崇左市'
-  ],
-
-  // 海南省
-  '海南省': [
-    '海口市', '三亚市', '三沙市', '儋州市',
-    '五指山市', '琼海市', '文昌市', '万宁市', '东方市',
-    '定安县', '屯昌县', '澄迈县', '临高县', '白沙黎族自治县',
-    '昌江黎族自治县', '乐东黎族自治县', '陵水黎族自治县',
-    '保亭黎族苗族自治县', '琼中黎族苗族自治县'
-  ],
-
-  // 四川省
-  '四川省': [
-    '成都市', '自贡市', '攀枝花市', '泸州市', '德阳市',
-    '绵阳市', '广元市', '遂宁市', '内江市', '乐山市',
-    '南充市', '眉山市', '宜宾市', '广安市', '达州市',
-    '雅安市', '巴中市', '资阳市', '阿坝藏族羌族自治州',
-    '甘孜藏族自治州', '凉山彝族自治州'
-  ],
-
-  // 贵州省
-  '贵州省': [
-    '贵阳市', '六盘水市', '遵义市', '安顺市', '毕节市',
-    '铜仁市', '黔西南布依族苗族自治州',
-    '黔东南苗族侗族自治州', '黔南布依族苗族自治州'
-  ],
-
-  // 云南省
-  '云南省': [
-    '昆明市', '曲靖市', '玉溪市', '保山市', '昭通市',
-    '丽江市', '普洱市', '临沧市', '楚雄彝族自治州',
-    '红河哈尼族彝族自治州', '文山壮族苗族自治州',
-    '西双版纳傣族自治州', '大理白族自治州',
-    '德宏傣族景颇族自治州', '怒江傈僳族自治州',
-    '迪庆藏族自治州'
-  ],
-
-  // 西藏自治区
-  '西藏自治区': [
-    '拉萨市', '日喀则市', '昌都市', '林芝市', '山南市',
-    '那曲市', '阿里地区'
-  ],
-
-  // 陕西省
-  '陕西省': [
-    '西安市', '铜川市', '宝鸡市', '咸阳市', '渭南市',
-    '延安市', '汉中市', '榆林市', '安康市', '商洛市'
-  ],
-
-  // 甘肃省
-  '甘肃省': [
-    '兰州市', '嘉峪关市', '金昌市', '白银市', '天水市',
-    '武威市', '张掖市', '平凉市', '酒泉市', '庆阳市',
-    '定西市', '陇南市', '临夏回族自治州', '甘南藏族自治州'
-  ],
-
-  // 青海省
-  '青海省': [
-    '西宁市', '海东市', '海北藏族自治州', '黄南藏族自治州',
-    '海南藏族自治州', '果洛藏族自治州', '玉树藏族自治州',
-    '海西蒙古族藏族自治州'
-  ],
-
-  // 宁夏回族自治区
-  '宁夏回族自治区': [
-    '银川市', '石嘴山市', '吴忠市', '固原市', '中卫市'
-  ],
-
-  // 新疆维吾尔自治区
-  '新疆维吾尔自治区': [
-    '乌鲁木齐市', '克拉玛依市', '吐鲁番市', '哈密市',
-    '昌吉回族自治州', '博尔塔拉蒙古自治州',
-    '巴音郭楞蒙古自治州', '阿克苏地区',
-    '克孜勒苏柯尔克孜自治州', '喀什地区', '和田地区',
-    '伊犁哈萨克自治州', '塔城地区', '阿勒泰地区',
-    '石河子市', '阿拉尔市', '图木舒克市', '五家渠市',
-    '北屯市', '铁门关市', '双河市', '可克达拉市',
-    '昆玉市', '胡杨河市', '新星市'
-  ],
-
-  // 港澳台
-  '香港特别行政区': ['香港'],
-  '澳门特别行政区': ['澳门'],
-  '台湾省': [
-    '台北市', '新北市', '桃园市', '台中市', '台南市', '高雄市',
-    '基隆市', '新竹市', '嘉义市', '新竹县', '苗栗县',
-    '彰化县', '南投县', '云林县', '嘉义县', '屏东县',
-    '宜兰县', '花莲县', '台东县', '澎湖县'
-  ]
-}
-
-const availableCities = computed(() => registerForm.province ? regionData[registerForm.province] : [])
-const handleProvinceChange = () => { registerForm.city = '' }
-const disabledFutureDates = (time) => time.getTime() > Date.now()
-
-const handleAvatarSuccess = (response) => {
-  // response 是后端 /upload-avatar 返回的对象
-  if (response.code === 200) {
-    registerForm.avatar = response.url
-    ElMessage.success('头像上传成功')
-  } else {
-    ElMessage.error('头像上传失败')
-  }
-}
-const beforeAvatarUpload = (rawFile) => {
-  const isValidFormat = rawFile.type === 'image/jpeg' || rawFile.type === 'image/png'
-  const isLt2M = rawFile.size / 1024 / 1024 < 2
-  if (!isValidFormat) ElMessage.error('只能上传 JPG 或 PNG 格式!')
-  if (!isLt2M) ElMessage.error('大小不能超过 2MB!')
-  return isValidFormat && isLt2M
-}
-
-const validateUsername = (rule, value, callback) => {
-  if (!value) callback(new Error('请输入用户名'))
-  else if (!/^[\u4e00-\u9fa5a-zA-Z0-9]+$/.test(value)) callback(new Error('仅允许中英文字符或数字'))
-  else callback()
-}
-const validatePassword = (rule, value, callback) => {
-  if (!value) callback(new Error('请输入密码'))
-  else if (value.length < 8) callback(new Error('长度至少为 8 位'))
-  else if (!/^[a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]+$/.test(value)) callback(new Error('仅允许字母/数字/特殊字符'))
-  else callback()
-}
-const validatePhone = (rule, value, callback) => {
-  if (!value) callback(new Error('请输入手机号码'))
-  else if (!/^1[3-9]\d{9}$/.test(value)) callback(new Error('请输入正确的手机号码'))
-  else callback()
-}
-
-const registerRules = reactive({
-  username: [{ required: true, validator: validateUsername, trigger: 'blur' }],
-  password: [{ required: true, validator: validatePassword, trigger: 'blur' }],
-  email: [{ required: true, message: '请输入邮箱', trigger: 'blur' }, { type: 'email', message: '格式不正确', trigger: ['blur', 'change'] }],
-  phone: [{ required: true, validator: validatePhone, trigger: 'blur' }],
-  gender: [{ required: true, message: '请选择性别', trigger: 'change' }],
-  birthday: [{ required: true, message: '请选择出生日期', trigger: 'change' }],
-  province: [{ required: true, message: '请选择省份', trigger: 'change' }],
-  city: [{ required: true, message: '请选择城市', trigger: 'change' }]
-})
-
-const handleRegister = async (formEl) => {
-  if (!formEl) return
-  await formEl.validate(async (valid) => {
-    if (valid) {
-      isRegisterLoading.value = true
-      try {
-        // 使用 FormData 处理 multipart 数据（或者直接发 JSON，因为头像已提前上传）
-        const formData = new FormData()
-        Object.keys(registerForm).forEach(key => {
-          if (key === 'birthday') {
-            formData.append('birthday_ts', registerForm.birthday)
-          } else {
-            formData.append(key, registerForm[key])
-          }
-        })
-
-        const response = await axios.post('http://127.0.0.1:8000/api/user/register', formData)
-
-        if (response.data.code === 200) {
-          ElMessage.success('注册成功！正在登录...')
-          // 存储令牌
-          localStorage.setItem('token', response.data.access_token)
-
-          setTimeout(() => {
-            switchToLogin()
-          }, 1500)
-        }
-      } catch (error) {
-        ElMessage.error(error.response?.data?.detail || '注册服务异常')
-      } finally {
-        isRegisterLoading.value = false
-      }
-    } else {
-      ElMessage.error('请检查表单填写是否完整')
-    }
-  })
-}
 </script>
 
 <style scoped>
-/* ================= 全局与布局 ================= */
-.login-page { display: flex; width: 100vw; height: 100vh; background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%); overflow: hidden; }
-
-.left-section { flex: 1; background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); display: flex; align-items: center; justify-content: center; color: white; position: relative; overflow: hidden; }
-.left-section::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 60%); animation: pulse 15s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-.brand-content { text-align: center; max-width: 400px; padding: 20px; z-index: 1; }
-.logo-icon { width: 80px; height: 80px; background: white; border-radius: 16px; margin: 0 auto 24px; position: relative; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); }
-.logo-icon::before { content: '🔍'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 40px; }
-.project-title { font-size: 36px; font-weight: 700; margin: 10px 0 8px; }
-.project-desc { font-size: 16px; opacity: 0.9; line-height: 1.6; }
-
-/* ================= 右侧与堆叠容器 ================= */
-.right-section {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.2fr minmax(420px, 520px);
+  gap: 28px;
   padding: 24px;
 }
 
-/* 适配超长表单，容器变高变宽 */
-.card-wrapper {
-  width: 100%;
-  max-width: 580px; /* 加宽以容纳双列网格 */
-  height: 680px;    /* 固定高度，内部滚动 */
+.hero-panel {
   position: relative;
+  overflow: hidden;
+  padding: 48px;
+  border-radius: 36px;
+  min-height: calc(100vh - 48px);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.08), transparent 28%),
+    linear-gradient(135deg, #091527 0%, #10243f 52%, #153b66 100%);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 28px 80px rgba(5, 15, 29, 0.36);
 }
 
-/* 卡片基础设置 */
-.card {
-  width: 100%;
-  height: 100%;
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+}
+
+.hero-badge,
+.auth-overline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hero-copy h1 {
+  margin: 20px 0 16px;
+  font-size: clamp(38px, 5vw, 64px);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  color: #fff;
+}
+
+.hero-copy > p {
+  max-width: 620px;
+  font-size: 17px;
+  line-height: 1.8;
+  color: rgba(230, 240, 255, 0.76);
+}
+
+.hero-grid {
+  margin-top: 34px;
+  display: grid;
+  gap: 18px;
+}
+
+.hero-card {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.hero-card h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  color: #fff;
+}
+
+.hero-card p {
+  margin: 0;
+  line-height: 1.7;
+  color: rgba(224, 233, 248, 0.74);
+}
+
+.hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  font-size: 24px;
+  color: #fff;
+}
+
+.hero-icon-blue {
+  background: linear-gradient(135deg, #0f7bff, #0ea5e9);
+}
+
+.hero-icon-warm {
+  background: linear-gradient(135deg, #ff8a3d, #f97316);
+}
+
+.hero-icon-ice {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+}
+
+.hero-orbit {
   position: absolute;
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  box-sizing: border-box;
-  border-radius: 16px !important;
-  cursor: default;
-  border: none;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08) !important;
+  right: -80px;
+  bottom: -120px;
+  width: 420px;
+  height: 420px;
 }
 
-/* 滚动条美化 */
-:deep(.el-card__body)::-webkit-scrollbar { width: 6px; }
-:deep(.el-card__body)::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-:deep(.el-card__body)::-webkit-scrollbar-track { background: transparent; }
+.orbit-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+}
 
-/* 交互失活阻断 */
-.card.is-inactive { cursor: pointer; }
-.card.is-inactive :deep(.el-card__body) { pointer-events: none; overflow: hidden; }
+.ring-b {
+  inset: 48px;
+}
 
-/* --- 登录层（上层）动画 --- */
-.login-card { z-index: 3; top: 0; left: 0; }
-.login-card.slideOut {
-  transform: translate(-32px, -32px) scale(0.96);
-  opacity: 0.5;
+.orbit-dot {
+  position: absolute;
+  border-radius: 50%;
+  box-shadow: 0 0 30px rgba(15, 123, 255, 0.8);
+}
+
+.orbit-dot-a {
+  width: 14px;
+  height: 14px;
+  top: 42px;
+  right: 96px;
+  background: #0ea5e9;
+}
+
+.orbit-dot-b {
+  width: 18px;
+  height: 18px;
+  left: 38px;
+  bottom: 112px;
+  background: #ff8a3d;
+}
+
+.hero-core {
+  position: absolute;
+  inset: 108px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(15, 123, 255, 0.22), rgba(9, 21, 39, 0.86));
+  box-shadow: inset 0 0 60px rgba(255, 255, 255, 0.06);
+}
+
+.hero-core span {
+  font-size: 14px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(215, 228, 246, 0.72);
+}
+
+.hero-core strong {
+  margin-top: 10px;
+  font-size: 38px;
+  letter-spacing: -0.04em;
+  color: #fff;
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 22px;
+  padding: 30px;
+  border-radius: 32px;
+  min-height: calc(100vh - 48px);
+  overflow: hidden;
+}
+
+.auth-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.auth-head h2 {
+  margin: 12px 0 8px;
+  font-size: 36px;
+  color: var(--ink-strong);
+}
+
+.auth-head p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.bootstrap-alert {
+  border-radius: 18px;
+}
+
+.auth-stack {
+  position: relative;
+  min-height: 890px;
+  padding: 0 32px 86px 0;
+}
+
+.auth-card {
+  position: absolute;
+  border-radius: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  transition:
+    transform 0.32s ease,
+    box-shadow 0.32s ease,
+    inset 0.32s ease,
+    background 0.32s ease;
+}
+
+.auth-card.active {
+  inset: 0 32px 86px 0;
   z-index: 2;
-  background: #f8fafc;
+  box-shadow: 0 26px 52px rgba(15, 23, 42, 0.12);
 }
 
-/* --- 注册层（下层）动画 --- */
-.lower-card { z-index: 2; top: 32px; left: 32px; opacity: 0.85; background: #f8fafc; }
-.lower-card.slideIn {
-  transform: translate(-32px, -32px);
-  opacity: 1;
-  z-index: 3;
-  background: #ffffff;
+.auth-card.idle {
+  inset: 62px 0 0 28px;
+  z-index: 1;
+  cursor: pointer;
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.08);
 }
 
-/* --- 悬停微动效 --- */
-.login-card.is-inactive:hover { transform: translate(-40px, -40px) scale(0.96); opacity: 0.7; }
-.lower-card.is-inactive:hover {
-  transform: translate(36px, 20px);
-  opacity: 1;
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.15) !important;
+.auth-card.idle:hover {
+  transform: translate(-4px, -4px);
 }
 
-/* ================= 卡片内部排版 ================= */
-.auth-header h2, .form-title { font-size: 26px; font-weight: 600; margin: 0 0 8px; color: #111827; }
-.auth-header p, .form-subtitle { color: #6b7280; margin-bottom: 24px; font-size: 14px; }
+.login-card.active {
+  background:
+    radial-gradient(circle at top right, rgba(15, 123, 255, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
+}
 
-/* 注册头部与返回按钮 */
-.register-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-.back-btn { font-weight: 500; }
+.register-card.active {
+  background:
+    radial-gradient(circle at top right, rgba(255, 138, 61, 0.14), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 250, 246, 0.96));
+}
 
-/* 居中底层的teaser内容 */
-.teaser-content { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.login-card.idle {
+  background:
+    linear-gradient(180deg, rgba(245, 249, 255, 0.94), rgba(232, 243, 255, 0.9));
+}
 
-/* 双列网格 */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
-.form-label { display: block; font-size: 13px; font-weight: 500; color: #374151; margin-bottom: 6px; }
+.register-card.idle {
+  background:
+    linear-gradient(180deg, rgba(255, 248, 242, 0.96), rgba(255, 238, 226, 0.9));
+}
 
-:deep(.el-form-item) { margin-bottom: 18px; }
-:deep(.el-input__wrapper), :deep(.el-select__wrapper) { border-radius: 8px; padding: 6px 14px; }
-.w-100 { width: 100%; }
+.card-shell {
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px;
+}
 
-/* 头像上传 */
-.avatar-item { display: flex; flex-direction: column; align-items: center; grid-column: 1 / -1; margin-bottom: 20px; }
-.avatar-uploader { border: 1px dashed #dcdfe6; border-radius: 50%; cursor: pointer; width: 80px; height: 80px; display: flex; justify-content: center; align-items: center; background: #fafafa; transition: 0.3s; }
-.avatar-uploader:hover { border-color: #2563eb; }
-.avatar-uploader-icon { font-size: 24px; color: #8c939d; }
-.avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; }
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
 
-/* 按钮与提示 */
-.submit-btn { width: 100%; height: 44px; border-radius: 8px; font-size: 15px; }
-.submit-item { grid-column: 1 / -1; }
-.action-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-.error-tip { color: #dc2626; font-size: 13px; margin-bottom: 12px; padding: 8px 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; }
+.card-chip,
+.peek-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
 
-/* ================= 弹出悬浮层 ================= */
-:deep(.custom-register-popover) { border-radius: 12px; padding: 12px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important; border: none; }
-.popover-inner-content { display: flex; flex-direction: column; gap: 12px; }
-.api-image-placeholder { width: 100%; height: 110px; background: #f3f4f6; border-radius: 8px; border: 1px dashed #d1d5db; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #9ca3af; transition: 0.3s; }
-.api-image-placeholder .img-icon { font-size: 28px; margin-bottom: 6px; }
-.popover-text { text-align: center; font-size: 14px; color: #4b5563; font-weight: 500; }
-.highlight { color: #2563eb; font-weight: 600; }
+.card-chip {
+  background: rgba(15, 123, 255, 0.08);
+  color: var(--brand-deep);
+}
 
-/* ================= 响应式降级 ================= */
-@media (max-width: 900px) {
-  .login-page { flex-direction: column; overflow-y: auto; }
-  .left-section { max-width: 100%; flex: none; padding: 40px 20px; }
-  .right-section { padding: 20px; }
+.peek-chip {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-soft);
+}
 
-  .card-wrapper { height: auto; max-width: 100%; }
+.peek-action {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink-main);
+  padding: 10px 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
 
-  /* 移动端取消绝对定位的物理堆叠，改为平铺并用 v-show 切换 */
-  .card { position: relative; top: 0 !important; left: 0 !important; transform: none !important; margin-bottom: 20px; height: auto; }
-  .card.is-inactive { display: none; } /* 移动端隐藏未激活的卡片 */
-  .card.is-inactive :deep(.el-card__body) { pointer-events: auto; }
+.peek-action:hover {
+  border-color: rgba(15, 123, 255, 0.24);
+  color: var(--brand-deep);
+}
 
-  .form-grid { grid-template-columns: 1fr; }
-  :deep(.custom-register-popover) { display: none !important; }
+.card-peek {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 22px 24px 26px;
+}
+
+.card-peek h3 {
+  margin: 14px 0 8px;
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--ink-strong);
+}
+
+.card-peek p {
+  margin: 0;
+  max-width: 280px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.auth-form {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.sub-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.auth-hint {
+  text-align: right;
+}
+
+.primary-btn {
+  width: 100%;
+  height: 52px;
+  border-radius: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 18px 30px rgba(15, 123, 255, 0.24);
+}
+
+.register-form {
+  gap: 16px;
+}
+
+.avatar-block {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 24px;
+}
+
+.avatar-block p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.avatar-uploader :deep(.el-upload) {
+  border-radius: 22px;
+}
+
+.avatar-preview,
+.avatar-placeholder {
+  width: 92px;
+  height: 92px;
+  border-radius: 22px;
+}
+
+.avatar-preview {
+  object-fit: cover;
+  border: 1px solid var(--line-soft);
+}
+
+.avatar-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(145deg, rgba(15, 123, 255, 0.08), rgba(255, 138, 61, 0.1));
+  color: var(--brand-deep);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.auth-form :deep(.el-input__wrapper),
+.auth-form :deep(.el-select__wrapper),
+.auth-form :deep(.el-textarea__inner) {
+  border-radius: 16px;
+  box-shadow: none;
+  min-height: 46px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.auth-form :deep(.el-date-editor.el-input),
+.auth-form :deep(.el-date-editor.el-input__wrapper),
+.auth-form :deep(.el-select) {
+  width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-panel,
+  .auth-panel {
+    min-height: auto;
+  }
+
+  .hero-orbit {
+    opacity: 0.28;
+  }
+}
+
+@media (max-width: 760px) {
+  .auth-page {
+    padding: 14px;
+    gap: 16px;
+  }
+
+  .hero-panel,
+  .auth-panel {
+    padding: 22px;
+    border-radius: 26px;
+  }
+
+  .auth-stack {
+    min-height: auto;
+    padding: 0;
+    display: grid;
+    gap: 14px;
+  }
+
+  .auth-card {
+    position: relative;
+    inset: auto !important;
+    transform: none !important;
+  }
+
+  .auth-card.idle {
+    min-height: 160px;
+  }
+
+  .auth-card.active {
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.1);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sub-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

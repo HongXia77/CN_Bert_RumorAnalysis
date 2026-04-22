@@ -1,721 +1,1118 @@
 <template>
-  <el-container class="layout-container">
-<!--    折叠后宽度是80px-->
-    <el-aside :width="isCollapse ? '80px' : '220px'" class="sidebar">
-      <div class="logo-area" :class="{ 'is-collapsed': isCollapse }">
-        <el-icon class="logo-icon"><Monitor /></el-icon>
-        <span class="logo-text" v-show="!isCollapse">辟谣分析系统</span>
-      </div>
-
-      <el-menu
-        :default-active="activeMenu"
-        class="custom-menu"
-        :collapse="isCollapse"
-        :collapse-transition="false"
-        @select="handleMenuSelect"
-      >
-        <el-menu-item index="home">
-          <el-icon><House /></el-icon>
-          <template #title>主页</template>
-        </el-menu-item>
-        <el-menu-item index="rumors">
-          <el-icon><Warning /></el-icon>
-          <template #title>速看！辟谣</template>
-        </el-menu-item>
-        <el-menu-item index="profile" @click="goToPersonCenter">
-          <el-icon><User /></el-icon>
-          <template #title >个人中心</template>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
-
-    <el-container class="main-container">
-      <el-header class="header">
-        <div class="header-left">
-          <el-icon class="toggle-btn" @click="toggleCollapse">
-            <Expand v-if="isCollapse" />
-            <Fold v-else />
-          </el-icon>
+  <div class="dashboard-page">
+    <header class="dashboard-top surface-card">
+      <div class="dashboard-top-main">
+        <div class="welcome-block">
+          <img
+            :key="avatarUrl"
+            :src="avatarUrl"
+            class="welcome-avatar"
+            alt="avatar"
+            @error="handleAvatarError"
+          />
+          <div class="welcome-copy">
+            <span class="page-tag">Rumor Workspace</span>
+            <h1>欢迎回来，{{ userStore.profile?.username || '分析员' }}</h1>
+            <p>{{ workspaceDescription }}</p>
+          </div>
         </div>
 
-        <div class="header-right">
-          <el-popover
-            placement="bottom-end"
-            :width="260"
-            trigger="click"
-            popper-class="user-popover-card"
+        <section class="workspace-status-panel">
+          <div class="workspace-status-head">
+            <div>
+              <span class="account-chip">账号信息</span>
+              <h3>当前工作席位</h3>
+              <p>{{ accountHint }}</p>
+            </div>
+            <el-tag class="status-tag" effect="dark" :type="userStore.isAdmin ? 'danger' : 'primary'" round>
+              {{ userStore.isAdmin ? '管理员视角' : '用户视角' }}
+            </el-tag>
+          </div>
+
+          <div class="account-grid">
+            <article v-for="item in accountStatusItems" :key="item.title" class="account-card">
+              <span>{{ item.title }}</span>
+              <strong>{{ item.value }}</strong>
+              <p>{{ item.description }}</p>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <div class="top-actions">
+        <div class="workspace-nav-shell">
+          <div class="workspace-nav-head">
+            <span class="nav-overline">工作台导航</span>
+            <p>根据当前账号角色展示可进入的功能入口。</p>
+          </div>
+
+          <div class="workspace-nav-grid">
+            <button
+              v-for="item in workspaceEntries"
+              :key="item.path"
+              class="workspace-nav-item"
+              :class="{ active: route.path === item.path }"
+              @click="goTo(item.path)"
+            >
+              <span class="workspace-nav-icon">
+                <el-icon><component :is="item.icon" /></el-icon>
+              </span>
+              <span class="workspace-nav-copy">
+                <strong>{{ item.label }}</strong>
+                <small>{{ item.description }}</small>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <button class="ghost-btn danger" @click="handleLogout">退出登录</button>
+      </div>
+    </header>
+
+    <section class="hero-strip">
+      <article class="hero-pane hero-main">
+        <div class="hero-main-copy">
+          <span class="hero-chip">实时识别</span>
+          <h2>输入一段文本，立即拿到风险判断与主谣言候选。</h2>
+          <p>建议输入完整上下文，系统会返回谣言概率、主谣言匹配线索以及可继续回查的候选信息。</p>
+        </div>
+
+        <el-form class="predict-form" @submit.prevent>
+          <el-input
+            v-model="draftText"
+            type="textarea"
+            :rows="8"
+            resize="none"
+            placeholder="请输入待识别文本，例如一段网传消息、截图文案、聊天记录摘要等。"
+          />
+          <div class="predict-actions">
+            <span class="predict-tip">完成识别后，最近一次结果会同步刷新到下方“最近一次识别”。</span>
+            <el-button
+              type="primary"
+              size="large"
+              :loading="predictLoading"
+              @click="runPrediction"
+            >
+              {{ predictLoading ? '识别中...' : '开始识别' }}
+            </el-button>
+          </div>
+        </el-form>
+      </article>
+
+      <article class="hero-pane hero-side hero-feed">
+        <div class="feed-shell-head">
+          <div>
+            <span class="section-overline section-overline-warm">Trusted Sources</span>
+            <h3>建议优先关注的权威入口</h3>
+            <p>建议优先从权威平台核查，再结合识别结果与主谣言候选做交叉判断。</p>
+          </div>
+          <el-tag class="feed-tag" effect="plain" round>
+            {{ userStore.isAdmin ? '识别 + 治理 + 核查' : '识别 + 核查' }}
+          </el-tag>
+        </div>
+
+        <div class="feed-list feed-list-side">
+          <a
+            v-for="item in sourceFeeds"
+            :key="item.name"
+            class="feed-item"
+            :href="item.url"
+            target="_blank"
+            rel="noreferrer"
           >
-            <template #reference>
-              <div class="user-trigger-wrapper">
-                <el-tooltip
-                  effect="dark"
-                  :content="`${userInfo.role} | ${userInfo.department}`"
-                  placement="bottom"
-                  :show-after="300"
-                >
-                  <div class="user-info-trigger">
-                    <el-avatar :size="36" :src="userInfo.avatar" class="user-avatar" />
-                    <span class="username">{{ userInfo.name }}</span>
-                  </div>
-                </el-tooltip>
-              </div>
-            </template>
-
-            <div class="user-card-content">
-              <div class="user-card-header">
-                <el-avatar :size="72" :src="userInfo.avatar" class="large-avatar" />
-                <h3 class="welcome-text">你好，{{ userInfo.name }}</h3>
-                <span class="user-role-badge">{{ userInfo.role }}</span>
-              </div>
-              <div class="user-card-actions">
-                <el-button type="primary" plain class="action-btn" @click="handleManageAccount">
-                  管理账号
-                </el-button>
-                <el-button type="danger" plain class="action-btn" @click="handleLogout">
-                  退出账号
-                </el-button>
-              </div>
+            <div>
+              <strong>{{ item.name }}</strong>
+              <p>{{ item.description }}</p>
             </div>
-          </el-popover>
+            <span>{{ item.tag }}</span>
+          </a>
         </div>
-      </el-header>
+      </article>
+    </section>
 
-      <el-main class="main-content">
-        <transition name="fade-transform" mode="out-in">
-          <div v-if="activeMenu === 'home'" class="page-wrapper" key="home">
-            <div class="search-section">
-              <h1 class="search-title">探索真实的世界</h1>
-              <div class="search-box">
-                <el-input
-                  v-model="searchQuery"
-                  placeholder="请输入您要查询的事件或关键词..."
-                  size="large"
-                  class="search-input"
-                  @keyup.enter="handleSearch"
-                  clearable
-                >
-                  <template #prefix>
-                    <el-icon class="el-input__icon"><Search /></el-icon>
-                  </template>
-                </el-input>
-                <el-button
-                  type="primary"
-                  size="large"
-                  class="search-btn"
-                  @click="handleSearch"
-                >
-                  查询
-                </el-button>
-              </div>
-            </div>
+    <section class="surface-card result-card">
+      <div class="section-head">
+        <div>
+          <span class="section-overline">Latest Result</span>
+          <h3>最近一次识别</h3>
+        </div>
+        <el-tag v-if="latestResult" :type="tagTypeMap[latestResult.risk_level]" effect="dark" round>
+          {{ riskTextMap[latestResult.risk_level] }}
+        </el-tag>
+      </div>
 
-            <div class="content-section">
-              <div class="section-header">
-                <h3>最新动态</h3>
-                <el-link type="primary" :underline="false">查看更多 <el-icon><ArrowRight /></el-icon></el-link>
-              </div>
+      <div v-if="latestResult" class="result-shell">
+        <div class="result-copy">
+          <h4>{{ latestResult.verdict }}</h4>
+          <p>{{ latestResult.text }}</p>
+          <span class="result-foot">
+            本条结果已同步写入历史记录，可继续前往历史页或主谣言库回查。
+          </span>
+        </div>
 
-              <el-row :gutter="24">
-                <el-col
-                  v-for="item in mockData"
-                  :key="item.id"
-                  :xs="24" :sm="12" :md="8" :lg="6"
-                  class="card-col"
-                >
-                  <el-card shadow="hover" class="info-card">
-                    <div class="card-header">
-                      <span class="tag" :class="item.status === '已辟谣' ? 'tag-success' : 'tag-warning'">
-                        {{ item.status }}
-                      </span>
-                      <span class="date">{{ item.date }}</span>
-                    </div>
-                    <h4 class="card-title">{{ item.title }}</h4>
-                    <p class="card-desc">{{ item.description }}</p>
+        <div class="result-metrics">
+          <article class="metric-card metric-primary">
+            <span>谣言概率</span>
+            <strong>{{ formatPercent(latestResult.rumor_probability) }}</strong>
+            <el-progress
+              :percentage="toPercentage(latestResult.rumor_probability)"
+              :status="latestResult.risk_level === 'high' ? 'exception' : latestResult.risk_level === 'medium' ? 'warning' : 'success'"
+              :stroke-width="14"
+            />
+          </article>
 
-                    <div class="card-footer">
-                      <el-icon><Link /></el-icon>
-                      <a :href="item.url" target="_blank" class="source-link" @click.stop>
-                        {{ item.source }}
-                      </a>
-                    </div>
-                  </el-card>
-                </el-col>
-              </el-row>
-            </div>
-          </div>
+          <article class="metric-card">
+            <span>主谣言匹配概率</span>
+            <strong>{{ formatPercent(latestMatchProbability) }}</strong>
+            <p>优先显示后端返回的匹配概率，没有时回退到 Top1 候选分。</p>
+          </article>
 
-          <div v-else-if="activeMenu === 'rumors'" class="placeholder-page" key="rumors">
-            <el-empty description="速看！辟谣板块开发中..." />
-          </div>
-        </transition>
-      </el-main>
-    </el-container>
-
-    <el-dialog
-      v-model="searchDialogVisible"
-      title="搜索结果"
-      width="50%"
-      class="custom-dialog"
-      destroy-on-close
-    >
-      <div class="dialog-content">
-        <p class="search-keyword">关于“<span>{{ searchQuery || '空' }}</span>”的查询结果：</p>
-        <div class="empty-state">
-          <el-skeleton :rows="4" animated />
-          <p class="loading-text">正在从数据库拉取对应内容...</p>
+          <article class="metric-card">
+            <span>基础模型概率</span>
+            <strong>{{ formatPercent(latestBaseProbability) }}</strong>
+            <p>用于辅助判断旧模型对当前结果的贡献强度。</p>
+          </article>
         </div>
       </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="searchDialogVisible = false">关 闭</el-button>
-        </span>
-      </template>
-    </el-dialog>
-  </el-container>
+
+      <section v-if="latestResult" class="related-strip">
+        <div class="related-head">
+          <div>
+            <span class="section-overline">Top Matches</span>
+            <h4>候选主谣言</h4>
+          </div>
+          <button class="ghost-btn slim-btn" @click="goTo('/rumor_library')">进入谣言库</button>
+        </div>
+
+        <div v-if="latestResult.related_rumors?.length" class="related-grid">
+          <article
+            v-for="item in latestResult.related_rumors.slice(0, 3)"
+            :key="item.rumor_id || item.event_id || item.title"
+            class="related-card"
+          >
+            <div class="related-meta">
+              <strong>{{ item.source_name || '平台条目' }}</strong>
+              <span>{{ item.publish_time || '时间待补充' }}</span>
+            </div>
+            <h5>{{ item.title || item.content }}</h5>
+            <p>{{ item.match_hint || item.truth_text || '作为候选线索返回，可继续人工核查。' }}</p>
+            <div class="related-bottom">
+              <span>候选相关度 {{ formatMatchScore(item.match_score) }}</span>
+              <button class="ghost-btn slim-btn primary-ghost" @click="viewRumorCandidate(item.rumor_id)">
+                {{ item.rumor_id ? '查看主谣言' : '浏览谣言库' }}
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="candidate-empty">
+          <p>当前这条结果暂未返回候选主谣言，后续补足召回后会在这里展示 Top-K 候选。</p>
+        </div>
+      </section>
+
+      <el-empty
+        v-else
+        description="你还没有发起本轮会话的文本识别。识别完成后，这里会展示谣言概率和候选主谣言。"
+      />
+    </section>
+  </div>
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
-  House, Warning, User, Search,
-  Monitor, ArrowRight, Link,
-  Fold, Expand
+  Compass,
+  DataBoard,
+  Files,
+  Location,
+  Management,
+  Notebook,
+  UserFilled,
 } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
-// 状态管理
-const activeMenu = ref('home')
-const searchQuery = ref('')
-const searchDialogVisible = ref(false)
-const isCollapse = ref(false) // 侧边栏折叠状态
+import api, { resolveAssetUrl } from '@/api/client'
+import { useUserStore } from '@/stores/user'
+
 const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+const fallbackAvatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
 
-// 模拟用户信息
-const userInfo = ref({
-  name: '分析师-张三',
-  avatar: 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png',
-  role: '高级数据分析师',
-  department: '信息核查中心'
+const draftText = ref('')
+const latestResult = ref(null)
+const predictLoading = ref(false)
+
+const riskTextMap = {
+  high: '高风险',
+  medium: '需复核',
+  low: '较稳定',
+}
+
+const tagTypeMap = {
+  high: 'danger',
+  medium: 'warning',
+  low: 'success',
+}
+
+const sourceFeeds = [
+  {
+    name: '中国互联网联合辟谣平台',
+    description: '适合核查社会热点、公共安全与政策类网传信息。',
+    tag: '国家级',
+    url: 'https://www.piyao.org.cn/',
+  },
+  {
+    name: '较真查证平台',
+    description: '适合寻找互联网流传说法的事实核验材料。',
+    tag: '媒体',
+    url: 'https://vp.fact.qq.com/',
+  },
+  {
+    name: '科学辟谣',
+    description: '偏向健康、科普、生活常识相关的误导信息澄清。',
+    tag: '科普',
+    url: 'https://piyao.kepuchina.cn/',
+  },
+]
+
+const avatarUrl = computed(() => (
+  resolveAssetUrl(
+    userStore.profile?.avatar,
+    userStore.profile?.update_time || userStore.profile?.avatar || '',
+  ) || fallbackAvatar
+))
+
+const workspaceDescription = computed(() => (
+  userStore.isAdmin
+    ? '你可以在这里完成实时识别，并继续进入管理台、系统分析和地区分析页面进行联动核查。'
+    : '你可以在这里完成实时识别，并继续前往历史记录、主谣言库和地区分析页面交叉核查。'
+))
+
+const accountHint = computed(() => (
+  userStore.isAdmin
+    ? '当前账号同时拥有识别、后台审核、地区分析和系统分析入口。'
+    : '当前账号可进行文本识别、历史回看、主谣言查询和地区分析浏览。'
+))
+
+const workspaceEntries = computed(() => {
+  const userEntries = [
+    {
+      path: '/geo_analysis',
+      label: '地区分析',
+      description: '单独查看全国到城市的地区传播画像。',
+      icon: Location,
+    },
+    {
+      path: '/history',
+      label: '历史记录',
+      description: '回看最近识别结果与处理轨迹。',
+      icon: Notebook,
+    },
+    {
+      path: '/rumor_library',
+      label: '主谣言库',
+      description: '浏览已知主谣言条目与辟谣摘要。',
+      icon: Files,
+    },
+    {
+      path: '/quickly_look',
+      label: '速看辟谣',
+      description: '查看常用权威平台与科普入口。',
+      icon: Compass,
+    },
+    {
+      path: '/person_center',
+      label: '个人中心',
+      description: '维护个人资料、头像和账号信息。',
+      icon: UserFilled,
+    },
+  ]
+
+  if (!userStore.isAdmin) {
+    return userEntries
+  }
+
+  return [
+    {
+      path: '/admin',
+      label: '管理员控制台',
+      description: '处理用户治理、审核记录与主谣言维护。',
+      icon: Management,
+    },
+    {
+      path: '/data_analysis',
+      label: '系统分析',
+      description: '查看成员结构和后台统计总览。',
+      icon: DataBoard,
+    },
+    ...userEntries,
+  ]
 })
 
-// 侧边栏切换逻辑
-const toggleCollapse = () => {
-  isCollapse.value = !isCollapse.value
-}
-
-// 菜单切换逻辑
-const handleMenuSelect = (index) => {
-  activeMenu.value = index
-}
-
-// 用户操作逻辑
-const handleManageAccount = () => {
-  ElMessage.success('正在进入账号管理界面...')
-  activeMenu.value = 'profile'
-}
-
-const handleLogout = () => {
-  ElMessage.warning('已安全退出账号')
-}
-
-// 搜索逻辑
-const handleSearch = () => {
-  searchDialogVisible.value = true
-}
-
-// 模拟后端数据库返回的卡片数据
-const mockData = ref([
+const accountStatusItems = computed(() => [
   {
-    id: 1,
-    title: '网传“吃加碘盐可以防核辐射”是真的吗？',
-    description: '近期部分网络平台上流传“吃加碘盐可以防核辐射”的消息，引发公众关注和部分地区抢购食盐。',
-    url: 'https://example.com/article/1',
-    source: '中国互联网联合辟谣平台',
-    date: '2023-10-15',
-    status: '已辟谣'
+    title: '当前角色',
+    value: userStore.isAdmin ? '管理员' : '普通用户',
+    description: userStore.isAdmin ? '具备后台审核与治理权限。' : '聚焦识别、回查与浏览功能。',
   },
   {
-    id: 2,
-    title: '关于“某地将发生7.0级大地震”的紧急说明',
-    description: '关于微信群流传的某地即将发生大地震的截图，经地震局核实为彻头彻尾的虚假信息。',
-    url: 'https://example.com/article/2',
-    source: '国家地震台网',
-    date: '2023-10-18',
-    status: '已辟谣'
+    title: '账号状态',
+    value: userStore.profile?.status || '未知',
+    description: '状态由用户资料接口实时同步。',
   },
   {
-    id: 3,
-    title: '喝骨头汤真的能快速补钙吗？',
-    description: '传统观念认为吃啥补啥，喝骨头汤能补钙。营养学专家指出骨头汤中的钙极难溶于水。',
-    url: 'https://example.com/article/3',
-    source: '丁香医生科普',
-    date: '2023-10-20',
-    status: '疑似谣言'
+    title: '最近活动量',
+    value: `${userStore.predictionHistory.length} 条`,
+    description: '仅统计当前账号自己的识别历史。',
   },
   {
-    id: 4,
-    title: '长期喝纯净水会导致身体缺矿物质？',
-    description: '人体吸收矿物质的主要途径是日常饮食，而非饮用水。合格的纯净水安全健康。',
-    url: 'https://example.com/article/4',
-    source: '中国科普博览',
-    date: '2023-10-22',
-    status: '已辟谣'
-  }
+    title: '可用功能',
+    value: userStore.isAdmin ? '识别 + 管理 + 分析' : '识别 + 历史 + 分析',
+    description: userStore.isAdmin ? '包含后台管理台和系统分析入口。' : '包含地区分析、主谣言库与历史回看。',
+  },
 ])
 
-const goToPersonCenter = () => {
-  // 通过 name 跳转（推荐，因为 path 变更时 name 通常不动）
-  router.push({ name: 'PersonCenter' })
+const latestMatchProbability = computed(() => {
+  if (!latestResult.value) {
+    return 0
+  }
 
-  // 或者通过 path 跳转
-  // router.push('/person_center')
+  const directValue = Number(latestResult.value.event_match_probability)
+  if (Number.isFinite(directValue) && directValue > 0) {
+    return Math.max(0, Math.min(directValue, 1))
+  }
+
+  const fallbackValue = Number(latestResult.value.related_rumors?.[0]?.match_score)
+  if (Number.isFinite(fallbackValue)) {
+    return Math.max(0, Math.min(fallbackValue, 1))
+  }
+
+  return 0
+})
+
+const latestBaseProbability = computed(() => {
+  const value = Number(latestResult.value?.base_model_probability)
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.min(value, 1))
+})
+
+const goTo = (path) => {
+  router.push(path)
 }
+
+const formatPercent = (value) => {
+  const score = Number(value)
+  if (!Number.isFinite(score)) {
+    return '--'
+  }
+  return `${(Math.max(0, Math.min(score, 1)) * 100).toFixed(1)}%`
+}
+
+const toPercentage = (value) => {
+  const score = Number(value)
+  if (!Number.isFinite(score)) {
+    return 0
+  }
+  return Number((Math.max(0, Math.min(score, 1)) * 100).toFixed(1))
+}
+
+const formatMatchScore = (value) => formatPercent(value)
+
+const viewRumorCandidate = (rumorId) => {
+  if (!rumorId) {
+    router.push('/rumor_library')
+    return
+  }
+  router.push({ path: '/rumor_library', query: { focus: String(rumorId) } })
+}
+
+const handleAvatarError = (event) => {
+  if (event?.target) {
+    event.target.src = fallbackAvatar
+  }
+}
+
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm('确认退出当前账号吗？', '退出登录', {
+      type: 'warning',
+      confirmButtonText: '退出',
+      cancelButtonText: '取消',
+    })
+    userStore.clearSession()
+    ElMessage.success('已退出登录')
+    router.push('/')
+  } catch {
+    // noop
+  }
+}
+
+const runPrediction = async () => {
+  if (!draftText.value.trim()) {
+    ElMessage.warning('请输入要识别的文本')
+    return
+  }
+
+  predictLoading.value = true
+  try {
+    const response = await api.post('/predict', { text: draftText.value })
+    latestResult.value = userStore.recordPrediction(response.data.data)
+    ElMessage.success('识别完成')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '识别失败，请确认后端模型是否可用')
+  } finally {
+    predictLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  try {
+    await userStore.fetchCurrentUser()
+    await userStore.fetchPredictionHistory()
+  } catch {
+    // 保持当前缓存资料作为降级
+  }
+
+  const draftFromHistory = sessionStorage.getItem('draft_detection_text')
+  if (draftFromHistory) {
+    draftText.value = draftFromHistory
+    sessionStorage.removeItem('draft_detection_text')
+  }
+
+  if (userStore.predictionHistory.length > 0) {
+    latestResult.value = userStore.predictionHistory[0]
+  }
+})
 </script>
 
 <style scoped>
-/* 全局布局 */
-.layout-container {
-  height: 100vh;
-  background-color: #f5f7fa;
+.dashboard-page {
+  padding: 24px;
+  display: grid;
+  gap: 18px;
 }
 
-/* --- 新增/修改：侧边栏及动画样式 --- */
-.sidebar {
-  background-color: #ffffff;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  overflow: hidden; /* 防止折叠时文字换行乱板 */
+.dashboard-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(420px, 0.95fr);
+  gap: 22px;
+  padding: 24px 26px;
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 22%),
+    radial-gradient(circle at top right, rgba(255, 138, 61, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 249, 253, 0.96));
 }
 
-
-.logo-area {
-  height: 60px;
-  display: flex;
-  align-items: center;
-  padding: 0 20px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-  border-bottom: 1px solid #f0f2f5;
-  white-space: nowrap;
-  transition: padding 0.3s;
-}
-
-.logo-area.is-collapsed {
-  padding: 0;
-  justify-content: center;
-}
-
-.logo-icon {
-  font-size: 24px;
-  color: #409eff;
-  margin-right: 10px;
-}
-
-.logo-area.is-collapsed .logo-icon {
-  margin-right: 0;
-}
-
-.custom-menu {
-  border-right: none;
-  margin-top: 10px;
-}
-
-.custom-menu:not(.el-menu--collapse) {
-  width: 220px;
-}
-
-.custom-menu .el-menu-item {
-  border-radius: 8px;
-  margin: 4px 12px;
-  height: 48px;
-  line-height: 48px;
-}
-
-.custom-menu .el-menu-item.is-active {
-  background-color: #ecf5ff;
-  color: #409eff;
-  font-weight: 500;
-}
-
-/* 右侧容器 */
-.main-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+.dashboard-top-main {
+  display: grid;
+  gap: 18px;
   min-width: 0;
 }
 
-/* --- 新增：顶部 Header 及用户信息栏 --- */
-.header {
-  height: 60px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e4e7ed;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-  z-index: 9;
-}
-
-.header-left {
+.welcome-block {
   display: flex;
   align-items: center;
+  gap: 18px;
+  min-width: 0;
+  flex: 1;
 }
 
-.toggle-btn {
-  font-size: 22px;
-  color: #606266;
-  cursor: pointer;
-  transition: color 0.3s;
-  padding: 4px;
+.welcome-copy {
+  min-width: 0;
 }
 
-.toggle-btn:hover {
-  color: #409eff;
+.welcome-avatar {
+  width: 76px;
+  height: 76px;
+  border-radius: 24px;
+  object-fit: cover;
+  border: 1px solid rgba(15, 123, 255, 0.12);
+  box-shadow: 0 12px 24px rgba(15, 123, 255, 0.12);
+  background: rgba(255, 255, 255, 0.86);
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-}
-
-.user-trigger-wrapper {
-  display: inline-block;
-}
-
-.user-info-trigger {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background-color: transparent;
-}
-
-.user-info-trigger:hover {
-  background-color: #f0f2f5;
-}
-
-.user-avatar {
-  border: 1px solid #ebeef5;
-}
-
-.username {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-}
-
-/* 弹出用户卡片内容样式 */
-.user-card-content {
-  display: flex;
-  flex-direction: column;
-  padding: 8px;
-}
-
-.user-card-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.large-avatar {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border: 2px solid #ffffff;
-}
-
-.welcome-text {
-  margin: 16px 0 6px 0;
-  font-size: 18px;
-  color: #303133;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  letter-spacing: 0.5px;
-}
-
-.user-role-badge {
+.page-tag,
+.section-overline,
+.hero-chip,
+.nav-overline,
+.account-chip {
+  display: inline-flex;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(15, 123, 255, 0.08);
+  color: var(--brand-deep);
   font-size: 12px;
-  color: #909399;
-  background-color: #f4f4f5;
-  padding: 2px 10px;
-  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.user-card-actions {
-  display: flex;
-  flex-direction: column;
+.nav-overline {
+  background: rgba(15, 123, 255, 0.1);
+}
+
+.account-chip {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.section-overline-warm {
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+.dashboard-top h1 {
+  margin: 14px 0 10px;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+}
+
+.dashboard-top p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.top-actions {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.workspace-nav-shell {
+  display: grid;
   gap: 12px;
-  margin-top: 20px;
 }
 
-.user-card-actions .action-btn {
-  margin-left: 0;
-  width: 100%;
-  border-radius: 8px;
-  height: 36px;
-  transition: all 0.3s;
+.workspace-nav-head {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
 }
 
-/* 主内容区样式 */
-.main-content {
-  padding: 0;
+.workspace-nav-head p {
+  max-width: 520px;
+  text-align: right;
+}
+
+.workspace-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace-nav-item {
   display: flex;
-  flex-direction: column;
-  overflow-x: hidden;
-  height: calc(100vh - 60px);
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 248, 255, 0.94));
+  cursor: pointer;
+  text-align: left;
+  transition: 0.24s ease;
 }
 
-.page-wrapper {
-  padding: 32px 48px;
-  max-width: 1400px;
-  margin: 0 auto;
-  width: 100%;
-  box-sizing: border-box;
+.workspace-nav-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 123, 255, 0.26);
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.06);
 }
 
-.placeholder-page {
-  height: 100%;
-  display: flex;
+.workspace-nav-item.active {
+  border-color: rgba(15, 123, 255, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(15, 123, 255, 0.12);
+}
+
+.workspace-nav-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(15, 123, 255, 0.12), rgba(14, 165, 233, 0.16));
+  color: var(--brand-deep);
+  font-size: 18px;
 }
 
-/* 搜索区域 */
-.search-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 0 60px;
+.workspace-nav-copy {
+  display: grid;
+  gap: 6px;
 }
 
-.search-title {
-  font-size: 32px;
-  color: #1f2f3d;
-  margin-bottom: 30px;
-  font-weight: 600;
-  letter-spacing: 2px;
+.workspace-nav-copy strong {
+  color: var(--ink-strong);
+  line-height: 1.45;
 }
 
-.search-box {
-  display: flex;
-  width: 100%;
-  max-width: 700px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  transition: all 0.3s;
+.workspace-nav-copy small {
+  color: var(--ink-soft);
+  line-height: 1.55;
 }
 
-.search-box:hover {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+.ghost-btn {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink-main);
+  padding: 10px 16px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: 0.24s ease;
 }
 
-.search-input {
-  flex: 1;
+.ghost-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 123, 255, 0.28);
 }
 
-.search-input :deep(.el-input__wrapper) {
-  box-shadow: none !important;
-  border-radius: 8px 0 0 8px;
-  padding-left: 20px;
+.ghost-btn.danger {
+  color: var(--danger);
 }
 
-.search-btn {
-  border-radius: 0 8px 8px 0;
-  padding: 0 32px;
-  font-size: 16px;
-}
-
-/* 内容展示区域及卡片（保持原有样式） */
-.content-section {
-  margin-top: 20px;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.section-header h3 {
-  margin: 0;
-  font-size: 20px;
-  color: #303133;
-  font-weight: 600;
-}
-
-.card-col {
-  margin-bottom: 24px;
-}
-
-.info-card {
+.ghost-btn.slim-btn {
+  padding: 8px 12px;
   border-radius: 12px;
-  border: none;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  font-size: 13px;
 }
 
-.info-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1) !important;
+.ghost-btn.primary-ghost {
+  color: var(--brand-deep);
 }
 
-.info-card :deep(.el-card__body) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 20px;
+.workspace-status-panel {
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
-.card-header {
+.workspace-status-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
 }
 
-.tag {
+.workspace-status-head h3 {
+  margin: 12px 0 8px;
+  font-size: 28px;
+  color: var(--ink-strong);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.workspace-status-head p {
+  max-width: 760px;
+}
+
+.status-tag {
+  margin-top: 2px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-card {
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(243, 248, 255, 0.78));
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66);
+}
+
+.account-card span {
+  display: block;
+  color: var(--ink-soft);
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
 }
 
-.tag-success {
-  background-color: #f0f9eb;
-  color: #67c23a;
+.account-card strong {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 24px;
+  color: var(--ink-strong);
 }
 
-.tag-warning {
-  background-color: #fdf6ec;
-  color: #e6a23c;
-}
-
-.date {
-  font-size: 13px;
-  color: #909399;
-}
-
-.card-title {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: #303133;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.card-desc {
+.account-card p {
   margin: 0;
-  font-size: 14px;
-  color: #606266;
-  line-height: 1.5;
-  flex: 1;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  font-size: 13px;
+}
+
+.hero-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);
+  gap: 14px;
+}
+
+.hero-pane {
+  border-radius: 30px;
+  padding: 24px;
+}
+
+.hero-main {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.28), transparent 26%),
+    linear-gradient(135deg, #dbeafe 0%, #ffffff 52%, #eff6ff 100%);
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  box-shadow: 0 24px 50px rgba(37, 99, 235, 0.1);
+}
+
+.hero-main h2 {
+  margin: 16px 0 10px;
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: var(--ink-strong);
+}
+
+.hero-main p {
+  margin: 0 0 24px;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.predict-form :deep(.el-textarea__inner) {
+  min-height: 210px;
+  border-radius: 22px;
+  box-shadow: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.predict-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.predict-tip {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.hero-side {
+  display: grid;
+  gap: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 138, 61, 0.16), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 248, 241, 0.96));
+  border: 1px solid rgba(249, 115, 22, 0.14);
+  box-shadow: 0 24px 50px rgba(249, 115, 22, 0.08);
+}
+
+.feed-shell-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.hero-side h3 {
+  margin: 12px 0 8px;
+  font-size: 26px;
+  color: var(--ink-strong);
+}
+
+.result-card {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 26px;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.section-head h3 {
+  margin: 10px 0 0;
+  font-size: 24px;
+  color: var(--ink-strong);
+}
+
+.result-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.95fr);
+  gap: 16px;
+}
+
+.result-copy,
+.metric-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(15, 123, 255, 0.05), rgba(255, 255, 255, 0.96));
+  border: 1px solid rgba(15, 123, 255, 0.1);
+}
+
+.result-copy {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.result-copy h4 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--ink-strong);
+}
+
+.result-copy p {
+  margin: 0;
+  color: var(--ink-main);
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
+.result-foot {
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.result-metrics {
+  display: grid;
+  gap: 12px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 8px;
+}
+
+.metric-primary {
+  background: linear-gradient(180deg, rgba(15, 123, 255, 0.08), rgba(255, 255, 255, 0.98));
+}
+
+.metric-card span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.metric-card strong {
+  color: var(--ink-strong);
+  font-size: 28px;
+}
+
+.metric-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.65;
+  font-size: 13px;
+}
+
+.related-strip {
+  display: grid;
+  gap: 14px;
+}
+
+.related-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.related-head h4 {
+  margin: 10px 0 0;
+  font-size: 20px;
+  color: var(--ink-strong);
+}
+
+.related-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.related-card {
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 255, 0.96));
+  border: 1px solid rgba(15, 123, 255, 0.1);
+  display: grid;
+  gap: 10px;
+}
+
+.related-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.related-meta strong {
+  color: var(--brand-deep);
+  font-size: 12px;
+}
+
+.related-meta span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.related-card h5 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--ink-strong);
+}
+
+.related-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.card-footer {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid #ebeef5;
+.related-bottom {
   display: flex;
+  justify-content: space-between;
+  gap: 12px;
   align-items: center;
-  font-size: 13px;
-  color: #409eff;
+  color: var(--ink-soft);
+  font-size: 12px;
 }
 
-.card-footer .el-icon {
-  margin-right: 6px;
+.candidate-empty {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px dashed rgba(148, 163, 184, 0.28);
 }
 
-.source-link {
-  color: #409eff;
+.candidate-empty p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.8;
+}
+
+.feed-tag {
+  color: #c2410c;
+  border-color: rgba(249, 115, 22, 0.22);
+}
+
+.feed-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.feed-list-side {
+  grid-template-columns: 1fr;
+}
+
+.feed-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 248, 252, 0.94));
+  border: 1px solid rgba(15, 23, 42, 0.08);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: 0.25s ease;
+}
+
+.feed-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 36px rgba(15, 23, 42, 0.08);
+}
+
+.feed-item strong {
+  display: block;
+  color: var(--ink-strong);
+  margin-bottom: 8px;
+}
+
+.feed-item p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.feed-item span {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--brand-deep);
+  font-weight: 700;
 }
 
-.source-link:hover {
-  color: #66b1ff;
-  text-decoration: underline;
+@media (max-width: 1260px) {
+  .dashboard-top,
+  .hero-strip,
+  .result-shell,
+  .feed-list,
+  .related-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-top {
+    align-items: stretch;
+  }
+
+  .top-actions,
+  .workspace-nav-head {
+    justify-items: start;
+  }
+
+  .workspace-nav-head p {
+    text-align: left;
+  }
 }
 
-/* 弹窗样式 */
-.custom-dialog :deep(.el-dialog) {
-  border-radius: 12px;
+@media (max-width: 820px) {
+  .account-grid,
+  .workspace-nav-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
-.search-keyword {
-  margin: 0 0 20px 0;
-  font-size: 16px;
-  color: #303133;
-}
+@media (max-width: 720px) {
+  .dashboard-page {
+    padding: 14px;
+  }
 
-.search-keyword span {
-  color: #409eff;
-  font-weight: bold;
-}
+  .dashboard-top,
+  .hero-pane,
+  .result-card,
+  .feed-strip {
+    padding: 18px;
+    border-radius: 22px;
+  }
 
-.empty-state {
-  padding: 30px;
-  background-color: #f8f9fa;
-  border-radius: 8px;
-  text-align: center;
-}
+  .dashboard-top,
+  .welcome-block,
+  .predict-actions,
+  .workspace-status-head,
+  .feed-shell-head,
+  .related-head,
+  .related-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-.loading-text {
-  margin-top: 20px;
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 页面切换动画 */
-.fade-transform-leave-active,
-.fade-transform-enter-active {
-  transition: all 0.3s;
-}
-
-.fade-transform-enter-from {
-  opacity: 0;
-  transform: translateX(-30px);
-}
-
-.fade-transform-leave-to {
-  opacity: 0;
-  transform: translateX(30px);
-}
-
-
-/* 修复侧边栏折叠时，菜单激活背景被截断的问题 */
-.el-menu--collapse .el-menu-item {
-  margin: 4px 8px;           /* 减小左右边距，适配 64px 宽度 */
-  width: 48px;               /* 限制宽度为 48px，使其成为完美圆角矩形 */
-  padding: 0 !important;     /* 清除自带的 padding */
-  justify-content: center;   /* 图标水平居中 */
-}
-
-/* 隐藏折叠状态下的 tooltip 触发块自带的 padding（Element Plus 内部结构） */
-.el-menu--collapse .el-menu-item :deep(.el-tooltip__trigger) {
-  padding: 0;
-  justify-content: center;
+  .workspace-nav-item,
+  .feed-item {
+    padding: 14px;
+  }
 }
 </style>
